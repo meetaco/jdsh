@@ -8,7 +8,7 @@ from rich.padding import Padding
 from rich import box
 
 from .client import JDClient
-from . import tui, utils, config
+from . import tui, utils, config, clipboard
 
 def print_help():
     console = Console()
@@ -45,7 +45,7 @@ def print_help():
     add_section("Queue Management")
     add_cmd("list (ls)", "[-d]", "List active downloads")
     add_cmd("grabber", "[-d]", "List pending links inside LinkGrabber")
-    add_cmd("add", "<url>...", "Add links to LinkGrabber")
+    add_cmd("add", "<url>... | --clipboard", "Add links to LinkGrabber")
     add_cmd("confirm", "", "Move all pending links to Queue")
     add_cmd("remove (rm)", "<uuid>...", "Remove items by ID")
 
@@ -65,6 +65,7 @@ def print_help():
         "[dim]# Add links, check them, then start:[/]\n"
         "[bold cyan]jd add[/] [green]\"http://site.com/file.exe\"[/]\n"
         "[bold cyan]jd add[/] [green]\"http://site.com/archive1.zip\"[/] [green]\"http://site.com/archive2.zip\"[/]\n"
+        "[bold cyan]jd add --clipboard[/]\n"
         "[bold cyan]jd grabber[/]\n"
         "[bold cyan]jd confirm[/]\n\n"
         "[dim]# detailed list view:[/]\n"
@@ -184,8 +185,20 @@ def cmd_grabber(device, args):
     console.print("\n[green]Run 'jd confirm' to start downloading.[/]")
 
 def cmd_add(device, args):
-    raw = " ".join(args.urls)
-    link_str = ",".join(raw.split())
+    if args.clipboard:
+        try:
+            clipboard_links = clipboard.read_clipboard_links()
+        except clipboard.ClipboardError as e:
+            raise SystemExit(f"Error: {e}")
+
+        positional_links = " ".join(args.urls).split()
+        links = clipboard.dedupe_preserve_order(positional_links + clipboard_links)
+        link_str = ",".join(links)
+    else:
+        # Preserve the existing positional-URL behavior unchanged.
+        raw = " ".join(args.urls)
+        link_str = ",".join(raw.split())
+
     device.linkgrabber.add_links([{"links": link_str, "autostart": False, "priority": "DEFAULT"}])
     print(f"Added links to Grabber. Run 'jd confirm' to start.")
 
@@ -252,7 +265,8 @@ def main():
     sub.add_parser("help")
 
     p_add = sub.add_parser("add")
-    p_add.add_argument("urls", nargs="+")
+    p_add.add_argument("--clipboard", action="store_true", help="Add links from the macOS clipboard")
+    p_add.add_argument("urls", nargs="*")
     
     p_rm = sub.add_parser("remove", aliases=["rm"])
     p_rm.add_argument("uuids", nargs="+")
@@ -270,6 +284,9 @@ def main():
     if args.command in ["help", None]:
         print_help()
         sys.exit(0)
+
+    if args.command == "add" and not args.urls and not args.clipboard:
+        parser.error("jd add requires at least one URL or --clipboard")
 
     device = client.connect()
     actions = {

@@ -51,7 +51,7 @@ jd
 │    Queue Management                                                                                                                                                  │
 │    list (ls)                [-d]                     List active downloads                                                                                           │
 │    grabber                  [-d]                     List pending links inside LinkGrabber                                                                           │
-│    add                      <url>...                 Add links to LinkGrabber                                                                                        │
+│    add                      <url>... | --clipboard     Add links to LinkGrabber                                                                                        │
 │    confirm                                           Move all pending links to Queue                                                                                 │
 │    remove (rm)              <uuid>...                Remove items by ID                                                                                              │
 │                                                                                                                                                                      │
@@ -74,12 +74,15 @@ jd
   # Add links, check them, then start:
   jd add "http://site.com/file.exe"
   jd add "http://site.com/archive1.zip" "http://site.com/archive2.zip"
+  jd add --clipboard
   jd grabber
   jd confirm
 
   # detailed list view:
   jd ls -d
 ```
+
+On macOS, `jd add --clipboard` reads the clipboard's `public.html` representation first. If the HTML contains links, JDSH adds the targets from each `<a href="...">` rather than the displayed text. If HTML is unavailable or contains no links, it falls back to the clipboard's plain-text contents.
 
 ## Config
 By default, the application runs with standard settings (`Host: 127.0.0.1, Port: 3128`). You can override these defaults by creating a configuration file.
