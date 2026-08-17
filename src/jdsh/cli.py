@@ -8,7 +8,7 @@ from rich.padding import Padding
 from rich import box
 
 from .client import JDClient
-from . import tui, utils, config
+from . import tui, utils, config, clipboard
 
 def print_help():
     console = Console()
@@ -45,7 +45,7 @@ def print_help():
     add_section("Queue Management")
     add_cmd("list (ls)", "[-d]", "List active downloads")
     add_cmd("grabber", "[-d]", "List pending links inside LinkGrabber")
-    add_cmd("add", "<url>...", "Add links to LinkGrabber")
+    add_cmd("add", "[<url>...] [--clipboard]", "Add links to LinkGrabber")
     add_cmd("confirm", "", "Move all pending links to Queue")
     add_cmd("remove (rm)", "<uuid>...", "Remove items by ID")
 
@@ -65,6 +65,7 @@ def print_help():
         "[dim]# Add links, check them, then start:[/]\n"
         "[bold cyan]jd add[/] [green]\"http://site.com/file.exe\"[/]\n"
         "[bold cyan]jd add[/] [green]\"http://site.com/archive1.zip\"[/] [green]\"http://site.com/archive2.zip\"[/]\n"
+        "[bold cyan]jd add --clipboard[/]\n"
         "[bold cyan]jd grabber[/]\n"
         "[bold cyan]jd confirm[/]\n\n"
         "[dim]# detailed list view:[/]\n"
@@ -184,8 +185,22 @@ def cmd_grabber(device, args):
     console.print("\n[green]Run 'jd confirm' to start downloading.[/]")
 
 def cmd_add(device, args):
-    raw = " ".join(args.urls)
-    link_str = ",".join(raw.split())
+    if args.clipboard:
+        try:
+            clipboard_links = clipboard.read_clipboard_links()
+        except clipboard.ClipboardError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            raise SystemExit(1)
+
+        # Match the existing positional URL normalization when --clipboard is combined with URLs.
+        positional_links = " ".join(args.urls).split()
+        links = clipboard.dedupe_preserve_order(positional_links + clipboard_links)
+        link_str = ",".join(links)
+    else:
+        # Preserve the existing positional-URL behavior unchanged.
+        raw = " ".join(args.urls)
+        link_str = ",".join(raw.split())
+
     device.linkgrabber.add_links([{"links": link_str, "autostart": False, "priority": "DEFAULT"}])
     print(f"Added links to Grabber. Run 'jd confirm' to start.")
 
@@ -220,19 +235,7 @@ def cmd_version(device, args):
     except: print("JD Core: Unknown")
 
 
-def main():
-    client = JDClient()
-    
-    # Interactive Mode
-    if len(sys.argv) == 1:
-        client.connect()
-        tui.run(client)
-        sys.exit(0)
-
-    if "-h" in sys.argv or "--help" in sys.argv:
-        print_help()
-        sys.exit(0)
-
+def _build_parser():
     parser = argparse.ArgumentParser(prog="jd", add_help=False)
     sub = parser.add_subparsers(dest="command")
 
@@ -252,7 +255,8 @@ def main():
     sub.add_parser("help")
 
     p_add = sub.add_parser("add")
-    p_add.add_argument("urls", nargs="+")
+    p_add.add_argument("--clipboard", action="store_true", help="Add links from the macOS clipboard")
+    p_add.add_argument("urls", nargs="*")
     
     p_rm = sub.add_parser("remove", aliases=["rm"])
     p_rm.add_argument("uuids", nargs="+")
@@ -260,12 +264,39 @@ def main():
     p_rep = sub.add_parser("replace")
     p_rep.add_argument("uuid")
     p_rep.add_argument("url")
+    return parser
 
-    try:
-        args, unknown = parser.parse_known_args()
-    except:
+
+def _normalize_argv(argv):
+    """Move add's --clipboard option before positionals so argparse accepts any option order."""
+    argv = list(argv)
+    if argv and argv[0] == "add" and "--clipboard" in argv[1:]:
+        argv = ["add", "--clipboard"] + [arg for arg in argv[1:] if arg != "--clipboard"]
+    return argv
+
+
+def _parse_args(argv):
+    parser = _build_parser()
+    args = parser.parse_args(_normalize_argv(argv))
+    if args.command == "add" and not args.urls and not args.clipboard:
+        parser.error("jd add requires at least one URL or --clipboard")
+    return args
+
+
+def main():
+    client = JDClient()
+    
+    # Interactive Mode
+    if len(sys.argv) == 1:
+        client.connect()
+        tui.run(client)
+        sys.exit(0)
+
+    if "-h" in sys.argv or "--help" in sys.argv:
         print_help()
-        sys.exit(1)
+        sys.exit(0)
+
+    args = _parse_args(sys.argv[1:])
     
     if args.command in ["help", None]:
         print_help()
