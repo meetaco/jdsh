@@ -50,6 +50,12 @@ class ClipboardFallbackTests(unittest.TestCase):
             ["https://example.com/one", "https://example.com/two"],
         )
 
+    def test_falls_back_when_html_is_whitespace_only(self):
+        self.assertEqual(
+            links_from_clipboard_data(" \n ", "https://example.com/plain"),
+            ["https://example.com/plain"],
+        )
+
 
 class PasteboardReadTests(unittest.TestCase):
     @patch("jdsh.clipboard.shutil.which", return_value="/usr/bin/osascript")
@@ -66,6 +72,10 @@ class PasteboardReadTests(unittest.TestCase):
         command = mock_run.call_args.args[0]
         self.assertEqual(command[:3], ["/usr/bin/osascript", "-l", "JavaScript"])
         self.assertIn("public.html", command[-1])
+        self.assertEqual(mock_run.call_args.kwargs["encoding"], "utf-8")
+        self.assertEqual(
+            mock_run.call_args.kwargs["timeout"], clipboard._COMMAND_TIMEOUT_SECONDS
+        )
 
     @patch("jdsh.clipboard.shutil.which", return_value="/usr/bin/osascript")
     @patch("jdsh.clipboard.subprocess.run")
@@ -75,6 +85,16 @@ class PasteboardReadTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(clipboard.ClipboardError, "pasteboard denied"):
+            clipboard._read_pasteboard_type("public.html")
+
+    @patch("jdsh.clipboard.shutil.which", return_value="/usr/bin/osascript")
+    @patch("jdsh.clipboard.subprocess.run")
+    def test_read_pasteboard_type_reports_timeout(self, mock_run, _mock_which):
+        mock_run.side_effect = subprocess.TimeoutExpired(
+            cmd=["/usr/bin/osascript"], timeout=clipboard._COMMAND_TIMEOUT_SECONDS
+        )
+
+        with self.assertRaisesRegex(clipboard.ClipboardError, "osascript timed out"):
             clipboard._read_pasteboard_type("public.html")
 
 
@@ -110,6 +130,17 @@ class ReadClipboardLinksTests(unittest.TestCase):
         )
         mock_html.assert_called_once_with("public.html")
         mock_plain.assert_called_once_with()
+
+    @patch("jdsh.clipboard.sys.platform", "darwin")
+    @patch("jdsh.clipboard._read_plain_text")
+    @patch(
+        "jdsh.clipboard._read_pasteboard_type",
+        side_effect=clipboard.ClipboardError("html reader failed"),
+    )
+    def test_html_reader_failure_is_not_downgraded_to_plain_text(self, _mock_html, mock_plain):
+        with self.assertRaisesRegex(clipboard.ClipboardError, "html reader failed"):
+            clipboard.read_clipboard_links()
+        mock_plain.assert_not_called()
 
 
 if __name__ == "__main__":
