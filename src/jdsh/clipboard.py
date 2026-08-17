@@ -6,6 +6,9 @@ from html.parser import HTMLParser
 from typing import Iterable, List, Optional
 
 
+_COMMAND_TIMEOUT_SECONDS = 5
+
+
 class ClipboardError(RuntimeError):
     """Raised when clipboard contents cannot be read or contain no links."""
 
@@ -47,7 +50,7 @@ def extract_links_from_html(html: str) -> List[str]:
 
 def links_from_clipboard_data(html: Optional[str], plain_text: Optional[str]) -> List[str]:
     """Prefer anchor targets from HTML, falling back to whitespace-delimited text."""
-    if html:
+    if html and html.strip():
         links = extract_links_from_html(html)
         if links:
             return links
@@ -55,6 +58,21 @@ def links_from_clipboard_data(html: Optional[str], plain_text: Optional[str]) ->
     if not plain_text:
         return []
     return dedupe_preserve_order(plain_text.split())
+
+
+def _run_command(command: List[str]) -> subprocess.CompletedProcess:
+    try:
+        return subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=_COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        tool = command[0].rsplit("/", 1)[-1]
+        raise ClipboardError(f"failed to read macOS clipboard: {tool} timed out") from exc
 
 
 def _read_pasteboard_type(type_name: str) -> str:
@@ -70,12 +88,7 @@ def _read_pasteboard_type(type_name: str) -> str:
             "value ? ObjC.unwrap(value) : '';",
         ]
     )
-    completed = subprocess.run(
-        [osascript, "-l", "JavaScript", "-e", script],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    completed = _run_command([osascript, "-l", "JavaScript", "-e", script])
     if completed.returncode != 0:
         detail = completed.stderr.strip() or f"osascript exited with {completed.returncode}"
         raise ClipboardError(f"failed to read macOS clipboard: {detail}")
@@ -86,7 +99,7 @@ def _read_plain_text() -> str:
     pasteboard_error = None
     try:
         text = _read_pasteboard_type("public.utf8-plain-text")
-        if text:
+        if text.strip():
             return text
     except ClipboardError as exc:
         pasteboard_error = exc
@@ -97,12 +110,7 @@ def _read_plain_text() -> str:
             raise pasteboard_error
         return ""
 
-    completed = subprocess.run(
-        [pbpaste],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    completed = _run_command([pbpaste])
     if completed.returncode != 0:
         detail = completed.stderr.strip() or f"pbpaste exited with {completed.returncode}"
         raise ClipboardError(f"failed to read macOS clipboard: {detail}") from pasteboard_error
@@ -113,12 +121,11 @@ def read_clipboard_links() -> List[str]:
     if sys.platform != "darwin":
         raise ClipboardError("--clipboard is only supported on macOS")
 
-    try:
-        html = _read_pasteboard_type("public.html")
-    except ClipboardError:
-        html = None
+    # A missing public.html representation is returned as an empty string. Actual reader
+    # failures must propagate so visible anchor text is never mistaken for the href target.
+    html = _read_pasteboard_type("public.html")
 
-    if html:
+    if html.strip():
         links = extract_links_from_html(html)
         if links:
             return links
