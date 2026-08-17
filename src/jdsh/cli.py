@@ -189,8 +189,10 @@ def cmd_add(device, args):
         try:
             clipboard_links = clipboard.read_clipboard_links()
         except clipboard.ClipboardError as e:
-            raise SystemExit(f"Error: {e}")
+            print(f"Error: {e}", file=sys.stderr)
+            raise SystemExit(1)
 
+        # Match the existing positional URL normalization when --clipboard is combined with URLs.
         positional_links = " ".join(args.urls).split()
         links = clipboard.dedupe_preserve_order(positional_links + clipboard_links)
         link_str = ",".join(links)
