@@ -23,6 +23,7 @@ class _HrefParser(HTMLParser):
                 self.links.append(value)
                 break
 
+    # Be lenient if clipboard HTML contains the syntactic (though invalid) form <a .../>.
     def handle_startendtag(self, tag, attrs) -> None:
         self.handle_starttag(tag, attrs)
 
