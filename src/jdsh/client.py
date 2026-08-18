@@ -3,21 +3,25 @@ from myjdapi import Myjdapi
 from . import config
 
 
-DOWNLOAD_LINK_STATE_QUERY = {
+COMPACT_LINK_STATE_QUERY = {
     "name": True,
     "bytesLoaded": True,
     "bytesTotal": True,
-    "speed": True,
     "running": True,
-    "eta": True,
     "status": True,
-    "advancedStatus": True,
     "finished": True,
     "enabled": True,
     "skipped": True,
+    "uuid": True,
+}
+
+DOWNLOAD_LINK_STATE_QUERY = {
+    **COMPACT_LINK_STATE_QUERY,
+    "speed": True,
+    "eta": True,
+    "advancedStatus": True,
     "extractionStatus": True,
     "host": True,
-    "uuid": True,
     "url": True,
 }
 
