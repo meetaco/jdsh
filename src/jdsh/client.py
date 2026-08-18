@@ -2,6 +2,26 @@ import sys
 from myjdapi import Myjdapi
 from . import config
 
+
+DOWNLOAD_LINK_STATE_QUERY = {
+    "name": True,
+    "bytesLoaded": True,
+    "bytesTotal": True,
+    "speed": True,
+    "running": True,
+    "eta": True,
+    "status": True,
+    "advancedStatus": True,
+    "finished": True,
+    "enabled": True,
+    "skipped": True,
+    "extractionStatus": True,
+    "host": True,
+    "uuid": True,
+    "url": True,
+}
+
+
 class JDClient:
     def __init__(self):
         self.api = Myjdapi()
@@ -21,28 +41,22 @@ class JDClient:
     def fetch_stats(self):
         try:
             state = self.device.downloadcontroller.get_current_state()
-            
-            links = self.device.downloads.query_links([{
-                "name": True, "bytesLoaded": True, "bytesTotal": True, 
-                "speed": True, "running": True, "eta": True, "status": True,
-                "finished": True, "enabled": True, "uuid": True
-            }])
-            
-            active = []
-            pending = []
-            
-            for l in links:
-                if l.get('finished'):
+
+            links = self.device.downloads.query_links([DOWNLOAD_LINK_STATE_QUERY.copy()])
+
+            running_links = []
+            enabled_unfinished_links = []
+
+            for link in links:
+                if link.get("finished"):
                     continue
-                
-                # Active
-                if l.get('running'):
-                    active.append(l)
-                # Pending
-                elif l.get('enabled'):
-                    pending.append(l)
-                    
-            return state, active, pending
+
+                if link.get("running"):
+                    running_links.append(link)
+                elif link.get("enabled"):
+                    enabled_unfinished_links.append(link)
+
+            return state, running_links, enabled_unfinished_links
         except Exception:
             return "ERROR", [], []
 
