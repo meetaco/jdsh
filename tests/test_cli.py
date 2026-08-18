@@ -4,7 +4,12 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from jdsh import cli, clipboard
-from jdsh.client import DOWNLOAD_LINK_STATE_QUERY, TUI_LINK_STATE_QUERY, JDClient
+from jdsh.client import (
+    COMPACT_LINK_STATE_QUERY,
+    DOWNLOAD_LINK_STATE_QUERY,
+    TUI_LINK_STATE_QUERY,
+    JDClient,
+)
 
 
 class ParseArgsTests(unittest.TestCase):
@@ -90,6 +95,10 @@ class RawLinkStateTests(unittest.TestCase):
         }
         for field in expected_fields:
             self.assertIs(DOWNLOAD_LINK_STATE_QUERY[field], True)
+
+    def test_compact_query_omits_detail_only_fields(self):
+        for field in ("advancedStatus", "extractionStatus", "host", "url", "speed", "eta"):
+            self.assertNotIn(field, COMPACT_LINK_STATE_QUERY)
 
     def test_tui_query_omits_diagnostic_only_fields(self):
         for field in ("advancedStatus", "skipped", "extractionStatus", "host", "url", "uuid"):
