@@ -8,7 +8,7 @@ from rich.text import Text
 from rich.padding import Padding
 from rich import box
 
-from .client import JDClient, DOWNLOAD_LINK_STATE_QUERY
+from .client import COMPACT_LINK_STATE_QUERY, DOWNLOAD_LINK_STATE_QUERY, JDClient
 from . import tui, utils, config, clipboard
 
 
@@ -173,7 +173,8 @@ def _raw_detail_text(link):
 
 
 def cmd_list(device, args):
-    links = device.downloads.query_links([DOWNLOAD_LINK_STATE_QUERY.copy()])
+    query = DOWNLOAD_LINK_STATE_QUERY if args.detail else COMPACT_LINK_STATE_QUERY
+    links = device.downloads.query_links([query.copy()])
     if not links:
         return print("Download queue is empty.")
 
