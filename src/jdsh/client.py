@@ -21,6 +21,21 @@ DOWNLOAD_LINK_STATE_QUERY = {
     "url": True,
 }
 
+# Keep the high-frequency TUI poll limited to fields it actually renders.
+# Diagnostic-only fields such as advancedStatus remain available to `jd ls -d`
+# without paying their construction/payload cost on every TUI refresh.
+TUI_LINK_STATE_QUERY = {
+    "name": True,
+    "bytesLoaded": True,
+    "bytesTotal": True,
+    "speed": True,
+    "running": True,
+    "eta": True,
+    "status": True,
+    "finished": True,
+    "enabled": True,
+}
+
 
 class JDClient:
     def __init__(self):
@@ -42,7 +57,7 @@ class JDClient:
         try:
             state = self.device.downloadcontroller.get_current_state()
 
-            links = self.device.downloads.query_links([DOWNLOAD_LINK_STATE_QUERY.copy()])
+            links = self.device.downloads.query_links([TUI_LINK_STATE_QUERY.copy()])
 
             running_links = []
             enabled_unfinished_links = []
