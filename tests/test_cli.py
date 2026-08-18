@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from jdsh import cli, clipboard
+from jdsh.client import DOWNLOAD_LINK_STATE_QUERY, JDClient
 
 
 class ParseArgsTests(unittest.TestCase):
@@ -71,6 +72,83 @@ class CmdAddTests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 1)
         self.assertIn("Error: read failed", stderr.getvalue())
         device.linkgrabber.add_links.assert_not_called()
+
+
+class RawLinkStateTests(unittest.TestCase):
+    def test_state_query_requests_jdownloader_status_fields(self):
+        expected_fields = {
+            "status",
+            "advancedStatus",
+            "running",
+            "enabled",
+            "finished",
+            "skipped",
+            "extractionStatus",
+            "eta",
+            "speed",
+            "host",
+        }
+        for field in expected_fields:
+            self.assertIs(DOWNLOAD_LINK_STATE_QUERY[field], True)
+
+    def test_detail_preserves_null_and_advanced_status(self):
+        link = {
+            "uuid": 123,
+            "status": None,
+            "running": False,
+            "enabled": True,
+            "finished": False,
+            "skipped": False,
+            "extractionStatus": None,
+            "eta": -1,
+            "speed": 0,
+            "host": "example.com",
+            "bytesLoaded": 0,
+            "bytesTotal": 1000,
+            "url": "https://example.com/file",
+            "advancedStatus": {
+                "ConditionalSkipReason": {
+                    "id": "TimeOutCondition",
+                    "timeout": 12345,
+                }
+            },
+        }
+
+        text = cli._raw_detail_text(link).plain
+        self.assertIn("status: null", text)
+        self.assertIn("running: false", text)
+        self.assertIn("enabled: true", text)
+        self.assertIn('"id": "TimeOutCondition"', text)
+        self.assertIn('"timeout": 12345', text)
+
+    def test_fetch_stats_keeps_api_flags_without_new_state_mapping(self):
+        client = JDClient.__new__(JDClient)
+        client.device = MagicMock()
+        running = {
+            "name": "running",
+            "running": True,
+            "enabled": True,
+            "finished": False,
+            "status": None,
+        }
+        enabled_unfinished = {
+            "name": "queued",
+            "running": False,
+            "enabled": True,
+            "finished": False,
+            "status": None,
+        }
+        client.device.downloadcontroller.get_current_state.return_value = "IDLE"
+        client.device.downloads.query_links.return_value = [running, enabled_unfinished]
+
+        state, running_links, enabled_unfinished_links = client.fetch_stats()
+
+        query = client.device.downloads.query_links.call_args.args[0][0]
+        self.assertTrue(query["advancedStatus"])
+        self.assertTrue(query["skipped"])
+        self.assertEqual(state, "IDLE")
+        self.assertEqual(running_links, [running])
+        self.assertEqual(enabled_unfinished_links, [enabled_unfinished])
 
 
 if __name__ == "__main__":
