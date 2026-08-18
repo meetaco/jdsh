@@ -138,6 +138,12 @@ def _raw_value(value):
     return str(value)
 
 
+def _raw_size(value):
+    if value is None:
+        return "null"
+    return utils.human_size(value)
+
+
 def _raw_detail_text(link):
     fields = [
         "uuid",
@@ -193,8 +199,7 @@ def cmd_list(device, args):
         table.add_column("Name")
 
         for link in links:
-            total = link.get('bytesTotal', 1) or 1
-            size_fmt = f"{utils.human_size(link.get('bytesLoaded',0))}/{utils.human_size(total)}"
+            size_fmt = f"{_raw_size(link.get('bytesLoaded'))}/{_raw_size(link.get('bytesTotal'))}"
 
             table.add_row(
                 f"{link['uuid']}",
