@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from rich.console import Console
 
 from jdsh import cli
-from jdsh.client import DOWNLOAD_LINK_STATE_QUERY
+from jdsh.client import COMPACT_LINK_STATE_QUERY, DOWNLOAD_LINK_STATE_QUERY
 
 
 class CompactRawLinkStateTests(unittest.TestCase):
@@ -33,7 +33,7 @@ class CompactRawLinkStateTests(unittest.TestCase):
             cli.cmd_list(device, SimpleNamespace(detail=False))
 
         device.downloads.query_links.assert_called_once_with(
-            [DOWNLOAD_LINK_STATE_QUERY.copy()]
+            [COMPACT_LINK_STATE_QUERY.copy()]
         )
         return output.getvalue()
 
@@ -54,6 +54,38 @@ class CompactRawLinkStateTests(unittest.TestCase):
     def test_compact_list_preserves_null_byte_values(self):
         rendered = self.render_compact(bytesLoaded=None, bytesTotal=None)
         self.assertIn("null/null", rendered)
+
+    def test_detail_list_uses_full_diagnostic_query(self):
+        device = MagicMock()
+        device.downloads.query_links.return_value = [
+            {
+                "uuid": 123,
+                "name": "file.zip",
+                "bytesLoaded": 0,
+                "bytesTotal": 0,
+                "status": None,
+                "running": False,
+                "enabled": True,
+                "skipped": False,
+                "finished": False,
+                "extractionStatus": None,
+                "eta": -1,
+                "speed": 0,
+                "host": "example.com",
+                "url": "https://example.com/file.zip",
+                "advancedStatus": None,
+            }
+        ]
+        output = io.StringIO()
+        console = Console(file=output, force_terminal=False, width=200)
+
+        with patch.object(cli, "Console", return_value=console):
+            cli.cmd_list(device, SimpleNamespace(detail=True))
+
+        device.downloads.query_links.assert_called_once_with(
+            [DOWNLOAD_LINK_STATE_QUERY.copy()]
+        )
+        self.assertIn("advancedStatus", output.getvalue())
 
 
 if __name__ == "__main__":
