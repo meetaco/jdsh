@@ -143,9 +143,9 @@ class RawLinkStateTests(unittest.TestCase):
 
         state, running_links, enabled_unfinished_links = client.fetch_stats()
 
-        query = client.device.downloads.query_links.call_args.args[0][0]
-        self.assertTrue(query["advancedStatus"])
-        self.assertTrue(query["skipped"])
+        client.device.downloads.query_links.assert_called_once_with(
+            [DOWNLOAD_LINK_STATE_QUERY.copy()]
+        )
         self.assertEqual(state, "IDLE")
         self.assertEqual(running_links, [running])
         self.assertEqual(enabled_unfinished_links, [enabled_unfinished])
