@@ -15,6 +15,8 @@ COMPACT_LINK_STATE_QUERY = {
     "uuid": True,
 }
 
+# Keep diagnostic output broad, but deliberately omit the upstream `password`
+# field so `jd ls -d` and `jd show --json` do not expose download credentials.
 DOWNLOAD_LINK_STATE_QUERY = {
     **COMPACT_LINK_STATE_QUERY,
     "speed": True,
@@ -23,6 +25,10 @@ DOWNLOAD_LINK_STATE_QUERY = {
     "extractionStatus": True,
     "host": True,
     "url": True,
+    "addedDate": True,
+    "comment": True,
+    "finishedDate": True,
+    "priority": True,
 }
 
 # Keep the high-frequency TUI poll limited to fields it actually renders.
