@@ -23,6 +23,10 @@ DOWNLOAD_LINK_STATE_QUERY = {
     "extractionStatus": True,
     "host": True,
     "url": True,
+    "addedDate": True,
+    "comment": True,
+    "finishedDate": True,
+    "priority": True,
 }
 
 # Keep the high-frequency TUI poll limited to fields it actually renders.

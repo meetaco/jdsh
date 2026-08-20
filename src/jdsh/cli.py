@@ -46,6 +46,7 @@ def print_help():
 
     add_section("Queue Management")
     add_cmd("list (ls)", "[-d]", "List active downloads")
+    add_cmd("show", "<id> [--json]", "Show raw details for one download link")
     add_cmd("grabber", "[-d]", "List pending links inside LinkGrabber")
     add_cmd("add", "[<url>...] [--clipboard]", "Add links to LinkGrabber")
     add_cmd("confirm", "", "Move all pending links to Queue")
@@ -71,7 +72,9 @@ def print_help():
         "[bold cyan]jd grabber[/]\n"
         "[bold cyan]jd confirm[/]\n\n"
         "[dim]# detailed list view:[/]\n"
-        "[bold cyan]jd ls -d[/]"
+        "[bold cyan]jd ls -d[/]\n\n"
+        "[dim]# inspect one download by the ID shown in jd ls:[/]\n"
+        "[bold cyan]jd show[/] [green]123456789[/]"
     )
 
     body = Padding(table, (0, 1))
@@ -145,31 +148,62 @@ def _raw_size(value):
 
 
 def _raw_detail_text(link):
-    fields = [
+    preferred_fields = [
         "uuid",
+        "name",
+        "packageUUID",
         "status",
+        "advancedStatus",
         "running",
         "enabled",
         "finished",
         "skipped",
         "extractionStatus",
+        "priority",
         "eta",
         "speed",
         "host",
         "bytesLoaded",
         "bytesTotal",
+        "addedDate",
+        "finishedDate",
+        "comment",
         "url",
     ]
+    fields = [field for field in preferred_fields if field in link]
+    fields.extend(sorted(field for field in link if field not in preferred_fields))
 
     detail = Text()
-    for field in fields:
+    for index, field in enumerate(fields):
         detail.append(f"{field}: ", style="bold")
-        detail.append(_raw_value(link.get(field)))
-        detail.append("\n")
-
-    detail.append("advancedStatus:\n", style="bold")
-    detail.append(json.dumps(link.get("advancedStatus"), ensure_ascii=False, indent=2, sort_keys=True))
+        value = link[field]
+        if isinstance(value, (dict, list)):
+            detail.append(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            detail.append(_raw_value(value))
+        if index < len(fields) - 1:
+            detail.append("\n")
     return detail
+
+
+def cmd_show(device, args):
+    links = device.downloads.query_links([DOWNLOAD_LINK_STATE_QUERY.copy()])
+    link = next((link for link in links if link.get("uuid") == args.id), None)
+    if link is None:
+        print(f"Download link ID not found: {args.id}", file=sys.stderr)
+        raise SystemExit(1)
+
+    if args.as_json:
+        print(json.dumps(link, ensure_ascii=False, indent=2, sort_keys=True))
+        return
+
+    console = Console()
+    console.print(Panel(
+        _raw_detail_text(link),
+        title=link.get("name") or str(args.id),
+        border_style="dim white",
+        expand=False,
+    ))
 
 
 def cmd_list(device, args):
@@ -298,6 +332,10 @@ def _build_parser():
 
     p_ls = sub.add_parser("list", aliases=["ls"])
     p_ls.add_argument("-d", "--detail", action="store_true")
+
+    p_show = sub.add_parser("show")
+    p_show.add_argument("id", type=int, help="Download link ID shown by jd ls")
+    p_show.add_argument("--json", action="store_true", dest="as_json", help="Print raw API response as JSON")
     
     p_gr = sub.add_parser("grabber")
     p_gr.add_argument("-d", "--detail", action="store_true")
@@ -361,6 +399,7 @@ def main():
     actions = {
         'status': cmd_status,
         'list': cmd_list, 'ls': cmd_list,
+        'show': cmd_show,
         'grabber': cmd_grabber, 'confirm': cmd_confirm,
         'add': cmd_add, 'remove': cmd_remove, 'rm': cmd_remove,
         'replace': cmd_replace, 'start': cmd_simple, 
