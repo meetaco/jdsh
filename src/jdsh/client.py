@@ -15,6 +15,8 @@ COMPACT_LINK_STATE_QUERY = {
     "uuid": True,
 }
 
+# Keep diagnostic output broad, but deliberately omit the upstream `password`
+# field so `jd ls -d` and `jd show --json` do not expose download credentials.
 DOWNLOAD_LINK_STATE_QUERY = {
     **COMPACT_LINK_STATE_QUERY,
     "speed": True,
