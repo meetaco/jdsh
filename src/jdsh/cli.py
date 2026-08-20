@@ -175,11 +175,13 @@ def _raw_detail_text(link):
 
     detail = Text()
     for index, field in enumerate(fields):
-        detail.append(f"{field}: ", style="bold")
-        value = link[field]
+        value = link.get(field)
+        detail.append(f"{field}:", style="bold")
         if isinstance(value, (dict, list)):
+            detail.append("\n")
             detail.append(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True))
         else:
+            detail.append(" ")
             detail.append(_raw_value(value))
         if index < len(fields) - 1:
             detail.append("\n")
@@ -187,7 +189,9 @@ def _raw_detail_text(link):
 
 
 def cmd_show(device, args):
-    links = device.downloads.query_links([DOWNLOAD_LINK_STATE_QUERY.copy()])
+    query = DOWNLOAD_LINK_STATE_QUERY.copy()
+    query["linkUUIDs"] = [args.id]
+    links = device.downloads.query_links([query])
     link = next((link for link in links if link.get("uuid") == args.id), None)
     if link is None:
         print(f"Download link ID not found: {args.id}", file=sys.stderr)
