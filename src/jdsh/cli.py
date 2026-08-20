@@ -1,4 +1,5 @@
 import argparse
+import json
 import sys
 from rich.console import Console
 from rich.panel import Panel
@@ -7,8 +8,9 @@ from rich.text import Text
 from rich.padding import Padding
 from rich import box
 
-from .client import JDClient
+from .client import COMPACT_LINK_STATE_QUERY, DOWNLOAD_LINK_STATE_QUERY, JDClient
 from . import tui, utils, config, clipboard
+
 
 def print_help():
     console = Console()
@@ -127,44 +129,91 @@ def cmd_status(device, args):
     except Exception as e:
         print(f"Error fetching status: {e}")
 
-def cmd_list(device, args):
-    query = {"name": True, "status": True, "bytesLoaded": True, "bytesTotal": True, "uuid": True}
-    if args.detail: query["url"] = True
 
-    links = device.downloads.query_links([query])
-    if not links: return print("Download queue is empty.")
+def _raw_value(value):
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def _raw_size(value):
+    if value is None:
+        return "null"
+    return utils.human_size(value)
+
+
+def _raw_detail_text(link):
+    fields = [
+        "uuid",
+        "status",
+        "running",
+        "enabled",
+        "finished",
+        "skipped",
+        "extractionStatus",
+        "eta",
+        "speed",
+        "host",
+        "bytesLoaded",
+        "bytesTotal",
+        "url",
+    ]
+
+    detail = Text()
+    for field in fields:
+        detail.append(f"{field}: ", style="bold")
+        detail.append(_raw_value(link.get(field)))
+        detail.append("\n")
+
+    detail.append("advancedStatus:\n", style="bold")
+    detail.append(json.dumps(link.get("advancedStatus"), ensure_ascii=False, indent=2, sort_keys=True))
+    return detail
+
+
+def cmd_list(device, args):
+    query = DOWNLOAD_LINK_STATE_QUERY if args.detail else COMPACT_LINK_STATE_QUERY
+    links = device.downloads.query_links([query.copy()])
+    if not links:
+        return print("Download queue is empty.")
 
     console = Console()
     if args.detail:
-        for l in links:
-            total = l.get('bytesTotal', 1) or 1
-            pct = (l.get('bytesLoaded', 0) / total) * 100
-            
-            p = Panel(
-                f"[bold]ID:[/bold] {l['uuid']}\n"
-                f"[bold]State:[/bold] {l.get('status')} ({pct:.1f}%)\n"
-                f"[bold]Size:[/bold] {utils.human_size(l.get('bytesLoaded', 0))} / {utils.human_size(total)}\n"
-                f"[bold]URL:[/bold] [blue underline]{l.get('url', 'N/A')}[/]",
-                title=l['name'],
+        for link in links:
+            panel = Panel(
+                _raw_detail_text(link),
+                title=link['name'],
                 border_style="dim white",
                 expand=False
             )
-            console.print(p)
+            console.print(panel)
     else:
         table = Table(box=box.SIMPLE_HEAD)
         table.add_column("ID", style="dim", no_wrap=True)
         table.add_column("Done/Total", justify="right")
         table.add_column("Status")
+        table.add_column("Running", justify="center")
+        table.add_column("Enabled", justify="center")
+        table.add_column("Skipped", justify="center")
+        table.add_column("Finished", justify="center")
         table.add_column("Name")
 
-        for l in links:
-            total = l.get('bytesTotal', 1) or 1
-            pct = (l.get('bytesLoaded', 0) / total) * 100
-            status = (l.get('status') or "N/A")[:15]
-            size_fmt = f"{utils.human_size(l.get('bytesLoaded',0))}/{utils.human_size(total)}"
-            
-            table.add_row(f"{l['uuid']}", size_fmt, status, l['name'])
+        for link in links:
+            size_fmt = f"{_raw_size(link.get('bytesLoaded'))}/{_raw_size(link.get('bytesTotal'))}"
+
+            table.add_row(
+                f"{link['uuid']}",
+                size_fmt,
+                _raw_value(link.get('status')),
+                _raw_value(link.get('running')),
+                _raw_value(link.get('enabled')),
+                _raw_value(link.get('skipped')),
+                _raw_value(link.get('finished')),
+                link['name'],
+            )
         console.print(table)
+
 
 def cmd_grabber(device, args):
     links = device.linkgrabber.query_links([{"name": True, "uuid": True, "url": True}])
@@ -183,6 +232,7 @@ def cmd_grabber(device, args):
     
     console.print(table)
     console.print("\n[green]Run 'jd confirm' to start downloading.[/]")
+
 
 def cmd_add(device, args):
     if args.clipboard:
@@ -204,21 +254,25 @@ def cmd_add(device, args):
     device.linkgrabber.add_links([{"links": link_str, "autostart": False, "priority": "DEFAULT"}])
     print(f"Added links to Grabber. Run 'jd confirm' to start.")
 
+
 def cmd_confirm(device, _):
     pkgs = device.linkgrabber.query_packages([{"uuid": True}])
     if not pkgs: return print("No pending packages.")
     device.linkgrabber.move_to_downloadlist([], [p['uuid'] for p in pkgs])
     print(f"Confirmed {len(pkgs)} packages.")
 
+
 def cmd_remove(device, args):
     device.downloads.remove_links(args.uuids, [])
     print(f"Removed {len(args.uuids)} items.")
+
 
 def cmd_replace(device, args):
     try: device.downloads.remove_links([args.uuid], [])
     except: pass
     device.linkgrabber.add_links([{"links": args.url, "autostart": True, "packageName": f"Rep_{args.uuid}"}])
     print("Link replaced and restarted.")
+
 
 def cmd_simple(device, args):
     cmds = {
@@ -228,6 +282,7 @@ def cmd_simple(device, args):
     }
     cmds[args.command]()
     print(f"Command executed: {args.command}")
+
 
 def cmd_version(device, args):
     print(f"JDSH v{config.VERSION}")
