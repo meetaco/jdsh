@@ -11,6 +11,12 @@ from jdsh.client import DOWNLOAD_LINK_STATE_QUERY
 
 
 class ShowCommandTests(unittest.TestCase):
+    @staticmethod
+    def show_query(link_id):
+        query = DOWNLOAD_LINK_STATE_QUERY.copy()
+        query["linkUUIDs"] = [link_id]
+        return query
+
     def test_parser_accepts_ls_link_id_and_json(self):
         args = cli._parse_args(["show", "123", "--json"])
 
@@ -31,7 +37,7 @@ class ShowCommandTests(unittest.TestCase):
             cli.cmd_show(device, SimpleNamespace(id=456, as_json=False))
 
         device.downloads.query_links.assert_called_once_with(
-            [DOWNLOAD_LINK_STATE_QUERY.copy()]
+            [self.show_query(456)]
         )
         rendered = output.getvalue()
         self.assertIn("uuid: 456", rendered)
@@ -48,6 +54,9 @@ class ShowCommandTests(unittest.TestCase):
             with self.assertRaises(SystemExit) as ctx:
                 cli.cmd_show(device, SimpleNamespace(id=999, as_json=False))
 
+        device.downloads.query_links.assert_called_once_with(
+            [self.show_query(999)]
+        )
         self.assertEqual(ctx.exception.code, 1)
         self.assertIn("Download link ID not found: 999", stderr.getvalue())
 
@@ -63,15 +72,33 @@ class ShowCommandTests(unittest.TestCase):
         with patch("sys.stdout", new_callable=io.StringIO) as stdout:
             cli.cmd_show(device, SimpleNamespace(id=123, as_json=True))
 
+        device.downloads.query_links.assert_called_once_with(
+            [self.show_query(123)]
+        )
         self.assertEqual(json.loads(stdout.getvalue()), link)
+
+    def test_nested_values_start_on_the_next_line(self):
+        text = cli._raw_detail_text(
+            {"uuid": 123, "advancedStatus": {"reason": "CAPTCHA"}}
+        ).plain
+
+        self.assertIn('advancedStatus:\n{\n  "reason": "CAPTCHA"\n}', text)
+        self.assertNotIn("advancedStatus: {", text)
 
     def test_detail_includes_unanticipated_api_fields(self):
         text = cli._raw_detail_text(
             {"uuid": 123, "name": "file.zip", "futureField": {"x": 1}}
         ).plain
 
-        self.assertIn("futureField:", text)
+        self.assertIn("futureField:\n", text)
         self.assertIn('"x": 1', text)
+
+    def test_priority_rendering_is_type_agnostic(self):
+        for priority in (1, "HIGH", {"name": "HIGH"}):
+            with self.subTest(priority=priority):
+                text = cli._raw_detail_text({"uuid": 123, "priority": priority}).plain
+                self.assertIn("priority:", text)
+                self.assertIn("HIGH" if priority != 1 else "1", text)
 
     def test_show_query_requests_extended_diagnostic_fields(self):
         for field in ("addedDate", "comment", "finishedDate", "priority"):
