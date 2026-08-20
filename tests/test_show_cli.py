@@ -85,7 +85,7 @@ class ShowCommandTests(unittest.TestCase):
         self.assertIn('advancedStatus:\n{\n  "reason": "CAPTCHA"\n}', text)
         self.assertNotIn("advancedStatus: {", text)
 
-    def test_detail_includes_unanticipated_api_fields(self):
+    def test_detail_renders_unanticipated_returned_fields(self):
         text = cli._raw_detail_text(
             {"uuid": 123, "name": "file.zip", "futureField": {"x": 1}}
         ).plain
@@ -94,11 +94,15 @@ class ShowCommandTests(unittest.TestCase):
         self.assertIn('"x": 1', text)
 
     def test_priority_rendering_is_type_agnostic(self):
-        for priority in (1, "HIGH", {"name": "HIGH"}):
+        cases = (
+            (1, "priority: 1"),
+            ("HIGH", "priority: HIGH"),
+            ({"name": "HIGH"}, 'priority:\n{\n  "name": "HIGH"\n}'),
+        )
+        for priority, expected in cases:
             with self.subTest(priority=priority):
                 text = cli._raw_detail_text({"uuid": 123, "priority": priority}).plain
-                self.assertIn("priority:", text)
-                self.assertIn("HIGH" if priority != 1 else "1", text)
+                self.assertIn(expected, text)
 
     def test_show_query_requests_extended_diagnostic_fields(self):
         for field in ("addedDate", "comment", "finishedDate", "priority"):
