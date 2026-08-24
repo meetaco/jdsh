@@ -7,7 +7,11 @@ from unittest.mock import MagicMock, patch
 from rich.console import Console
 
 from jdsh import cli
-from jdsh.client import DOWNLOAD_LINK_STATE_QUERY
+from jdsh.client import (
+    DOWNLOAD_LINK_STATE_QUERY,
+    DOWNLOAD_PACKAGE_STATE_QUERY,
+    DOWNLOAD_URL_DISPLAY_TYPES,
+)
 
 
 class ShowCommandTests(unittest.TestCase):
@@ -17,6 +21,27 @@ class ShowCommandTests(unittest.TestCase):
         query["linkUUIDs"] = [link_id]
         return query
 
+    @staticmethod
+    def package_query(package_id):
+        query = DOWNLOAD_PACKAGE_STATE_QUERY.copy()
+        query["packageUUIDs"] = [package_id]
+        return query
+
+    @staticmethod
+    def build_device():
+        device = MagicMock()
+        device.downloads.query_links.return_value = [
+            {"uuid": 123, "packageUUID": 999, "name": "file.zip"}
+        ]
+        device.downloads.query_packages.return_value = [
+            {"uuid": 999, "name": "package", "saveTo": "/downloads"}
+        ]
+        device.action.return_value = {
+            "https://origin.example/file.zip": [123],
+            "https://referrer.example/page": [123],
+        }
+        return device
+
     def test_parser_accepts_ls_link_id_and_json(self):
         args = cli._parse_args(["show", "123", "--json"])
 
@@ -24,58 +49,65 @@ class ShowCommandTests(unittest.TestCase):
         self.assertEqual(args.id, 123)
         self.assertTrue(args.as_json)
 
-    def test_show_uses_download_link_uuid_from_ls(self):
-        device = MagicMock()
-        device.downloads.query_links.return_value = [
-            {"uuid": 123, "packageUUID": 999, "name": "first.zip"},
-            {"uuid": 456, "packageUUID": 888, "name": "second.zip"},
-        ]
+    def test_show_queries_link_parent_package_and_all_download_url_types(self):
+        device = self.build_device()
         output = io.StringIO()
         console = Console(file=output, force_terminal=False, width=200)
 
         with patch.object(cli, "Console", return_value=console):
-            cli.cmd_show(device, SimpleNamespace(id=456, as_json=False))
+            cli.cmd_show(device, SimpleNamespace(id=123, as_json=False))
 
-        device.downloads.query_links.assert_called_once_with(
-            [self.show_query(456)]
+        device.downloads.query_links.assert_called_once_with([self.show_query(123)])
+        device.downloads.query_packages.assert_called_once_with([self.package_query(999)])
+        device.action.assert_called_once_with(
+            "/downloadsV2/getDownloadUrls",
+            [[123], [], DOWNLOAD_URL_DISPLAY_TYPES],
         )
+
         rendered = output.getvalue()
-        self.assertIn("uuid: 456", rendered)
-        self.assertIn("packageUUID: 888", rendered)
-        self.assertNotIn("uuid: 123", rendered)
+        self.assertIn("Link: file.zip", rendered)
+        self.assertIn("Package", rendered)
+        self.assertIn("saveTo: /downloads", rendered)
+        self.assertIn("Download URLs", rendered)
+        self.assertIn("https://origin.example/file.zip", rendered)
 
     def test_package_uuid_is_not_accepted_as_show_id(self):
-        device = MagicMock()
-        device.downloads.query_links.return_value = [
-            {"uuid": 123, "packageUUID": 999, "name": "file.zip"}
-        ]
+        device = self.build_device()
 
         with patch("sys.stderr", new_callable=io.StringIO) as stderr:
             with self.assertRaises(SystemExit) as ctx:
                 cli.cmd_show(device, SimpleNamespace(id=999, as_json=False))
 
-        device.downloads.query_links.assert_called_once_with(
-            [self.show_query(999)]
-        )
+        device.downloads.query_links.assert_called_once_with([self.show_query(999)])
         self.assertEqual(ctx.exception.code, 1)
         self.assertIn("Download link ID not found: 999", stderr.getvalue())
+        device.downloads.query_packages.assert_not_called()
+        device.action.assert_not_called()
 
-    def test_json_outputs_selected_raw_link(self):
-        link = {
-            "uuid": 123,
-            "name": "file.zip",
-            "advancedStatus": {"reason": "CAPTCHA"},
-        }
-        device = MagicMock()
-        device.downloads.query_links.return_value = [link]
+    def test_json_outputs_combined_related_data(self):
+        device = self.build_device()
 
         with patch("sys.stdout", new_callable=io.StringIO) as stdout:
             cli.cmd_show(device, SimpleNamespace(id=123, as_json=True))
 
-        device.downloads.query_links.assert_called_once_with(
-            [self.show_query(123)]
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["link"]["uuid"], 123)
+        self.assertEqual(payload["package"]["uuid"], 999)
+        self.assertIn("https://origin.example/file.zip", payload["downloadUrls"])
+
+    def test_missing_parent_package_uuid_is_reported_as_null_without_package_query(self):
+        device = self.build_device()
+        device.downloads.query_links.return_value = [{"uuid": 123, "name": "orphan.bin"}]
+
+        with patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            cli.cmd_show(device, SimpleNamespace(id=123, as_json=True))
+
+        self.assertIsNone(json.loads(stdout.getvalue())["package"])
+        device.downloads.query_packages.assert_not_called()
+        device.action.assert_called_once_with(
+            "/downloadsV2/getDownloadUrls",
+            [[123], [], DOWNLOAD_URL_DISPLAY_TYPES],
         )
-        self.assertEqual(json.loads(stdout.getvalue()), link)
 
     def test_nested_values_start_on_the_next_line(self):
         text = cli._raw_detail_text(
@@ -107,6 +139,28 @@ class ShowCommandTests(unittest.TestCase):
     def test_show_query_requests_extended_diagnostic_fields(self):
         for field in ("addedDate", "comment", "finishedDate", "priority"):
             self.assertIs(DOWNLOAD_LINK_STATE_QUERY[field], True)
+
+    def test_package_query_requests_upstream_full_fields(self):
+        expected = {
+            "bytesLoaded",
+            "bytesTotal",
+            "childCount",
+            "comment",
+            "enabled",
+            "eta",
+            "finished",
+            "hosts",
+            "priority",
+            "running",
+            "saveTo",
+            "speed",
+            "status",
+        }
+        self.assertEqual(set(DOWNLOAD_PACKAGE_STATE_QUERY), expected)
+        self.assertNotIn("password", DOWNLOAD_PACKAGE_STATE_QUERY)
+
+    def test_download_url_display_types_are_complete(self):
+        self.assertEqual(DOWNLOAD_URL_DISPLAY_TYPES, ["ORIGIN", "REFERRER", "CUSTOM"])
 
 
 if __name__ == "__main__":
