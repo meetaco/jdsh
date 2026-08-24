@@ -31,6 +31,27 @@ DOWNLOAD_LINK_STATE_QUERY = {
     "priority": True,
 }
 
+# JDownloader's PackageQueryStorable.FULL fields. Package queries do not expose
+# the link password field, so the full package diagnostic surface is safe to use.
+DOWNLOAD_PACKAGE_STATE_QUERY = {
+    "bytesLoaded": True,
+    "bytesTotal": True,
+    "childCount": True,
+    "comment": True,
+    "enabled": True,
+    "eta": True,
+    "finished": True,
+    "hosts": True,
+    "priority": True,
+    "running": True,
+    "saveTo": True,
+    "speed": True,
+    "status": True,
+}
+
+# Ask downloadsV2/getDownloadUrls for every currently documented URL view.
+DOWNLOAD_URL_DISPLAY_TYPES = ["ORIGIN", "REFERRER", "CUSTOM"]
+
 # Keep the high-frequency TUI poll limited to fields it actually renders.
 # Diagnostic-only fields such as advancedStatus remain available to `jd ls -d`
 # without paying their construction/payload cost on every TUI refresh.
