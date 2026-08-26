@@ -34,8 +34,15 @@ class ShowCommandTests(unittest.TestCase):
             {"uuid": 123, "packageUUID": 999, "name": "file.zip"}
         ]
         device.downloads.query_packages.return_value = [
-            {"uuid": 999, "name": "package", "saveTo": "/downloads"}
+            {
+                "uuid": 999,
+                "name": "package",
+                "saveTo": "/downloads",
+                "childCount": 1,
+                "hosts": ["example.com"],
+            }
         ]
+        # DownloadsAPIV2.getDownloadUrls returns Map<String, List<Long>>.
         device.action.return_value = {
             "https://origin.example/file.zip": [123],
             "https://referrer.example/page": [123],
@@ -61,13 +68,14 @@ class ShowCommandTests(unittest.TestCase):
         device.downloads.query_packages.assert_called_once_with([self.package_query(999)])
         device.action.assert_called_once_with(
             "/downloadsV2/getDownloadUrls",
-            [[123], [], DOWNLOAD_URL_DISPLAY_TYPES],
+            [[123], [], list(DOWNLOAD_URL_DISPLAY_TYPES)],
         )
 
         rendered = output.getvalue()
         self.assertIn("Link: file.zip", rendered)
         self.assertIn("Package", rendered)
         self.assertIn("saveTo: /downloads", rendered)
+        self.assertIn("childCount: 1", rendered)
         self.assertIn("Download URLs", rendered)
         self.assertIn("https://origin.example/file.zip", rendered)
 
@@ -84,8 +92,9 @@ class ShowCommandTests(unittest.TestCase):
         device.downloads.query_packages.assert_not_called()
         device.action.assert_not_called()
 
-    def test_json_outputs_combined_related_data(self):
+    def test_json_outputs_combined_related_data_with_upstream_url_map_shape(self):
         device = self.build_device()
+        expected_urls = device.action.return_value
 
         with patch("sys.stdout", new_callable=io.StringIO) as stdout:
             cli.cmd_show(device, SimpleNamespace(id=123, as_json=True))
@@ -93,7 +102,7 @@ class ShowCommandTests(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertEqual(payload["link"]["uuid"], 123)
         self.assertEqual(payload["package"]["uuid"], 999)
-        self.assertIn("https://origin.example/file.zip", payload["downloadUrls"])
+        self.assertEqual(payload["downloadUrls"], expected_urls)
 
     def test_missing_parent_package_uuid_is_reported_as_null_without_package_query(self):
         device = self.build_device()
@@ -106,8 +115,31 @@ class ShowCommandTests(unittest.TestCase):
         device.downloads.query_packages.assert_not_called()
         device.action.assert_called_once_with(
             "/downloadsV2/getDownloadUrls",
-            [[123], [], DOWNLOAD_URL_DISPLAY_TYPES],
+            [[123], [], list(DOWNLOAD_URL_DISPLAY_TYPES)],
         )
+
+    def test_package_query_failure_is_reported_cleanly(self):
+        device = self.build_device()
+        device.downloads.query_packages.side_effect = RuntimeError("package unavailable")
+
+        with patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit) as ctx:
+                cli.cmd_show(device, SimpleNamespace(id=123, as_json=False))
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn("Failed to query parent package", stderr.getvalue())
+        device.action.assert_not_called()
+
+    def test_download_url_query_failure_is_reported_cleanly(self):
+        device = self.build_device()
+        device.action.side_effect = RuntimeError("URL endpoint unavailable")
+
+        with patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit) as ctx:
+                cli.cmd_show(device, SimpleNamespace(id=123, as_json=False))
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn("Failed to query download URLs", stderr.getvalue())
 
     def test_nested_values_start_on_the_next_line(self):
         text = cli._raw_detail_text(
@@ -124,6 +156,15 @@ class ShowCommandTests(unittest.TestCase):
 
         self.assertIn("futureField:\n", text)
         self.assertIn('"x": 1', text)
+
+    def test_package_detail_uses_package_field_order(self):
+        text = cli._raw_detail_text(
+            {"uuid": 999, "name": "package", "saveTo": "/downloads", "childCount": 1},
+            cli.PACKAGE_DETAIL_FIELDS,
+        ).plain
+
+        self.assertLess(text.index("saveTo:"), text.index("childCount:"))
+        self.assertNotIn("packageUUID:", text)
 
     def test_priority_rendering_is_type_agnostic(self):
         cases = (
@@ -159,8 +200,9 @@ class ShowCommandTests(unittest.TestCase):
         self.assertEqual(set(DOWNLOAD_PACKAGE_STATE_QUERY), expected)
         self.assertNotIn("password", DOWNLOAD_PACKAGE_STATE_QUERY)
 
-    def test_download_url_display_types_are_complete(self):
-        self.assertEqual(DOWNLOAD_URL_DISPLAY_TYPES, ["ORIGIN", "REFERRER", "CUSTOM"])
+    def test_download_url_display_types_are_complete_and_immutable(self):
+        self.assertEqual(DOWNLOAD_URL_DISPLAY_TYPES, ("ORIGIN", "REFERRER", "CUSTOM"))
+        self.assertIsInstance(DOWNLOAD_URL_DISPLAY_TYPES, tuple)
 
 
 if __name__ == "__main__":
