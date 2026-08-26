@@ -88,7 +88,7 @@ jd
   jd show 123456789 --json
 ```
 
-`jd show <id>` uses the numeric download-link ID shown by `jd ls`. It reports the raw download-link state, the parent package details when available, and JDownloader's download-URL map. `--json` emits one object with `link`, `package`, and `downloadUrls`. The download-link password field is intentionally not requested by this diagnostic command.
+`jd show <id>` uses the numeric download-link ID shown by `jd ls`. It reports the raw download-link state, the parent package details when available, and separate `getDownloadUrls` responses for all five JDownloader URL display types: `CUSTOM`, `REFERRER`, `ORIGIN`, `CONTAINER`, and `CONTENT`. JDownloader selects only the first matching URL type within a single `getDownloadUrls` request, so JDSH queries each type separately. `--json` emits one object with `link`, `package`, and `downloadUrls`; the keys under `downloadUrls` are the requested URL types. If JDownloader's optional `UseUrlOrderForMyJD` setting is enabled, JDownloader may override the requested type with its configured URL order. The download-link password field is intentionally not requested by this diagnostic command.
 
 On macOS, `jd add --clipboard` reads the clipboard's `public.html` representation first. If the HTML contains links, JDSH adds the targets from each `<a href="...">` rather than the displayed text. If HTML is unavailable or contains no links, it falls back to the clipboard's plain-text contents. A failure to read the HTML representation is reported as an error instead of silently treating displayed text as a link target.
 
