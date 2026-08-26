@@ -49,8 +49,8 @@ DOWNLOAD_PACKAGE_STATE_QUERY = {
     "status": True,
 }
 
-# Every UrlDisplayTypeStorable currently documented by JDownloader.
-DOWNLOAD_URL_DISPLAY_TYPES = ("ORIGIN", "REFERRER", "CUSTOM")
+# Keep the same order as JDownloader's UrlDisplayType enum.
+DOWNLOAD_URL_DISPLAY_TYPES = ("CUSTOM", "REFERRER", "ORIGIN", "CONTAINER", "CONTENT")
 
 # Keep the high-frequency TUI poll limited to fields it actually renders.
 # Diagnostic-only fields such as advancedStatus remain available to `jd ls -d`
@@ -69,13 +69,21 @@ TUI_LINK_STATE_QUERY = {
 
 
 def get_download_urls(device, link_ids, package_ids=()):
-    """Call downloadsV2/getDownloadUrls using JDownloader's documented parameter order."""
-    # DownloadsAPIV2 declares: getDownloadUrls(linkIds, packageIds, urlDisplayType).
-    # myjdapi's Jddevice.action accepts the remote API params as one positional list.
-    return device.action(
-        "/downloadsV2/getDownloadUrls",
-        [list(link_ids), list(package_ids), list(DOWNLOAD_URL_DISPLAY_TYPES)],
-    )
+    """Return the raw getDownloadUrls response for every URL display type."""
+    # SelectionInfoUtils.getURLs stops at the first matching type for each link,
+    # so querying all types in one call would only return the highest-priority
+    # match. Query each type separately to preserve all URL views JDownloader can
+    # expose. The outer keys are the requested types; if JDownloader's optional
+    # UseUrlOrderForMyJD setting is enabled, JDownloader may override that request.
+    link_ids = list(link_ids)
+    package_ids = list(package_ids)
+    responses = {}
+    for url_type in DOWNLOAD_URL_DISPLAY_TYPES:
+        responses[url_type] = device.action(
+            "/downloadsV2/getDownloadUrls",
+            [link_ids, package_ids, [url_type]],
+        )
+    return responses
 
 
 class JDClient:
