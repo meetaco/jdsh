@@ -49,8 +49,8 @@ DOWNLOAD_PACKAGE_STATE_QUERY = {
     "status": True,
 }
 
-# Ask downloadsV2/getDownloadUrls for every currently documented URL view.
-DOWNLOAD_URL_DISPLAY_TYPES = ["ORIGIN", "REFERRER", "CUSTOM"]
+# Every UrlDisplayTypeStorable currently documented by JDownloader.
+DOWNLOAD_URL_DISPLAY_TYPES = ("ORIGIN", "REFERRER", "CUSTOM")
 
 # Keep the high-frequency TUI poll limited to fields it actually renders.
 # Diagnostic-only fields such as advancedStatus remain available to `jd ls -d`
@@ -66,6 +66,16 @@ TUI_LINK_STATE_QUERY = {
     "finished": True,
     "enabled": True,
 }
+
+
+def get_download_urls(device, link_ids, package_ids=()):
+    """Call downloadsV2/getDownloadUrls using JDownloader's documented parameter order."""
+    # DownloadsAPIV2 declares: getDownloadUrls(linkIds, packageIds, urlDisplayType).
+    # myjdapi's Jddevice.action accepts the remote API params as one positional list.
+    return device.action(
+        "/downloadsV2/getDownloadUrls",
+        [list(link_ids), list(package_ids), list(DOWNLOAD_URL_DISPLAY_TYPES)],
+    )
 
 
 class JDClient:
