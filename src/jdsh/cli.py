@@ -12,10 +12,56 @@ from .client import (
     COMPACT_LINK_STATE_QUERY,
     DOWNLOAD_LINK_STATE_QUERY,
     DOWNLOAD_PACKAGE_STATE_QUERY,
-    DOWNLOAD_URL_DISPLAY_TYPES,
     JDClient,
+    get_download_urls,
 )
 from . import tui, utils, config, clipboard
+
+
+LINK_DETAIL_FIELDS = (
+    "uuid",
+    "name",
+    "packageUUID",
+    "status",
+    "advancedStatus",
+    "running",
+    "enabled",
+    "finished",
+    "skipped",
+    "extractionStatus",
+    "priority",
+    "eta",
+    "speed",
+    "host",
+    "bytesLoaded",
+    "bytesTotal",
+    "addedDate",
+    "finishedDate",
+    "comment",
+    "url",
+)
+
+PACKAGE_DETAIL_FIELDS = (
+    "uuid",
+    "name",
+    "status",
+    "running",
+    "enabled",
+    "finished",
+    "priority",
+    "eta",
+    "speed",
+    "bytesLoaded",
+    "bytesTotal",
+    "saveTo",
+    "childCount",
+    "hosts",
+    "comment",
+)
+
+
+class ShowError(RuntimeError):
+    pass
 
 
 def print_help():
@@ -153,38 +199,13 @@ def _raw_size(value):
     return utils.human_size(value)
 
 
-def _raw_detail_text(link):
-    preferred_fields = [
-        "uuid",
-        "name",
-        "packageUUID",
-        "status",
-        "advancedStatus",
-        "running",
-        "enabled",
-        "finished",
-        "skipped",
-        "extractionStatus",
-        "priority",
-        "eta",
-        "speed",
-        "host",
-        "bytesLoaded",
-        "bytesTotal",
-        "saveTo",
-        "childCount",
-        "hosts",
-        "addedDate",
-        "finishedDate",
-        "comment",
-        "url",
-    ]
-    fields = [field for field in preferred_fields if field in link]
-    fields.extend(sorted(field for field in link if field not in preferred_fields))
+def _raw_detail_text(data, preferred_fields=LINK_DETAIL_FIELDS):
+    fields = [field for field in preferred_fields if field in data]
+    fields.extend(sorted(field for field in data if field not in preferred_fields))
 
     detail = Text()
     for index, field in enumerate(fields):
-        value = link.get(field)
+        value = data.get(field)
         detail.append(f"{field}:", style="bold")
         if isinstance(value, (dict, list)):
             detail.append("\n")
@@ -200,24 +221,31 @@ def _raw_detail_text(link):
 def _show_payload(device, link_id):
     link_query = DOWNLOAD_LINK_STATE_QUERY.copy()
     link_query["linkUUIDs"] = [link_id]
-    links = device.downloads.query_links([link_query])
+    try:
+        links = device.downloads.query_links([link_query])
+    except Exception as e:
+        raise ShowError(f"Failed to query download link: {e}") from e
+
     link = next((link for link in links if link.get("uuid") == link_id), None)
     if link is None:
-        print(f"Download link ID not found: {link_id}", file=sys.stderr)
-        raise SystemExit(1)
+        raise ShowError(f"Download link ID not found: {link_id}")
 
     package = None
     package_uuid = link.get("packageUUID")
     if package_uuid is not None:
         package_query = DOWNLOAD_PACKAGE_STATE_QUERY.copy()
         package_query["packageUUIDs"] = [package_uuid]
-        packages = device.downloads.query_packages([package_query])
+        try:
+            packages = device.downloads.query_packages([package_query])
+        except Exception as e:
+            raise ShowError(f"Failed to query parent package: {e}") from e
         package = next((pkg for pkg in packages if pkg.get("uuid") == package_uuid), None)
 
-    download_urls = device.action(
-        "/downloadsV2/getDownloadUrls",
-        [[link_id], [], DOWNLOAD_URL_DISPLAY_TYPES.copy()],
-    )
+    try:
+        download_urls = get_download_urls(device, [link_id])
+    except Exception as e:
+        raise ShowError(f"Failed to query download URLs: {e}") from e
+
     return {
         "link": link,
         "package": package,
@@ -226,7 +254,11 @@ def _show_payload(device, link_id):
 
 
 def cmd_show(device, args):
-    payload = _show_payload(device, args.id)
+    try:
+        payload = _show_payload(device, args.id)
+    except ShowError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        raise SystemExit(1)
 
     if args.as_json:
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
@@ -241,7 +273,7 @@ def cmd_show(device, args):
     ))
 
     package_text = (
-        _raw_detail_text(payload["package"])
+        _raw_detail_text(payload["package"], PACKAGE_DETAIL_FIELDS)
         if payload["package"] is not None
         else Text("null")
     )
