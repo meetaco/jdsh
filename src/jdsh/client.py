@@ -31,6 +31,27 @@ DOWNLOAD_LINK_STATE_QUERY = {
     "priority": True,
 }
 
+# JDownloader's PackageQueryStorable.FULL fields. Package queries do not expose
+# the link password field, so the full package diagnostic surface is safe to use.
+DOWNLOAD_PACKAGE_STATE_QUERY = {
+    "bytesLoaded": True,
+    "bytesTotal": True,
+    "childCount": True,
+    "comment": True,
+    "enabled": True,
+    "eta": True,
+    "finished": True,
+    "hosts": True,
+    "priority": True,
+    "running": True,
+    "saveTo": True,
+    "speed": True,
+    "status": True,
+}
+
+# Keep the same order as JDownloader's UrlDisplayType enum.
+DOWNLOAD_URL_DISPLAY_TYPES = ("CUSTOM", "REFERRER", "ORIGIN", "CONTAINER", "CONTENT")
+
 # Keep the high-frequency TUI poll limited to fields it actually renders.
 # Diagnostic-only fields such as advancedStatus remain available to `jd ls -d`
 # without paying their construction/payload cost on every TUI refresh.
@@ -45,6 +66,24 @@ TUI_LINK_STATE_QUERY = {
     "finished": True,
     "enabled": True,
 }
+
+
+def get_download_urls(device, link_ids, package_ids=()):
+    """Return the raw getDownloadUrls response for every URL display type."""
+    # SelectionInfoUtils.getURLs stops at the first matching type for each link,
+    # so querying all types in one call would only return the highest-priority
+    # match. Query each type separately to preserve all URL views JDownloader can
+    # expose. The outer keys are the requested types; if JDownloader's optional
+    # UseUrlOrderForMyJD setting is enabled, JDownloader may override that request.
+    link_ids = list(link_ids)
+    package_ids = list(package_ids)
+    responses = {}
+    for url_type in DOWNLOAD_URL_DISPLAY_TYPES:
+        responses[url_type] = device.action(
+            "/downloadsV2/getDownloadUrls",
+            [link_ids, package_ids, [url_type]],
+        )
+    return responses
 
 
 class JDClient:

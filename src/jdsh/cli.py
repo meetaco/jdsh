@@ -8,8 +8,60 @@ from rich.text import Text
 from rich.padding import Padding
 from rich import box
 
-from .client import COMPACT_LINK_STATE_QUERY, DOWNLOAD_LINK_STATE_QUERY, JDClient
+from .client import (
+    COMPACT_LINK_STATE_QUERY,
+    DOWNLOAD_LINK_STATE_QUERY,
+    DOWNLOAD_PACKAGE_STATE_QUERY,
+    JDClient,
+    get_download_urls,
+)
 from . import tui, utils, config, clipboard
+
+
+LINK_DETAIL_FIELDS = (
+    "uuid",
+    "name",
+    "packageUUID",
+    "status",
+    "advancedStatus",
+    "running",
+    "enabled",
+    "finished",
+    "skipped",
+    "extractionStatus",
+    "priority",
+    "eta",
+    "speed",
+    "host",
+    "bytesLoaded",
+    "bytesTotal",
+    "addedDate",
+    "finishedDate",
+    "comment",
+    "url",
+)
+
+PACKAGE_DETAIL_FIELDS = (
+    "uuid",
+    "name",
+    "status",
+    "running",
+    "enabled",
+    "finished",
+    "priority",
+    "eta",
+    "speed",
+    "bytesLoaded",
+    "bytesTotal",
+    "saveTo",
+    "childCount",
+    "hosts",
+    "comment",
+)
+
+
+class ShowError(RuntimeError):
+    pass
 
 
 def print_help():
@@ -46,7 +98,7 @@ def print_help():
 
     add_section("Queue Management")
     add_cmd("list (ls)", "[-d]", "List active downloads")
-    add_cmd("show", "<id> [--json]", "Show raw details for one download link")
+    add_cmd("show", "<id> [--json]", "Show raw link, package, and URL details")
     add_cmd("grabber", "[-d]", "List pending links inside LinkGrabber")
     add_cmd("add", "[<url>...] [--clipboard]", "Add links to LinkGrabber")
     add_cmd("confirm", "", "Move all pending links to Queue")
@@ -73,7 +125,7 @@ def print_help():
         "[bold cyan]jd confirm[/]\n\n"
         "[dim]# detailed list view:[/]\n"
         "[bold cyan]jd ls -d[/]\n\n"
-        "[dim]# inspect one download by the ID shown in jd ls:[/]\n"
+        "[dim]# inspect one download and related package/URL data:[/]\n"
         "[bold cyan]jd show[/] [green]123456789[/]"
     )
 
@@ -147,35 +199,16 @@ def _raw_size(value):
     return utils.human_size(value)
 
 
-def _raw_detail_text(link):
-    preferred_fields = [
-        "uuid",
-        "name",
-        "packageUUID",
-        "status",
-        "advancedStatus",
-        "running",
-        "enabled",
-        "finished",
-        "skipped",
-        "extractionStatus",
-        "priority",
-        "eta",
-        "speed",
-        "host",
-        "bytesLoaded",
-        "bytesTotal",
-        "addedDate",
-        "finishedDate",
-        "comment",
-        "url",
-    ]
-    fields = [field for field in preferred_fields if field in link]
-    fields.extend(sorted(field for field in link if field not in preferred_fields))
+def _raw_detail_text(data, preferred_fields=LINK_DETAIL_FIELDS):
+    if data is None:
+        return Text("null")
+
+    fields = [field for field in preferred_fields if field in data]
+    fields.extend(sorted(field for field in data if field not in preferred_fields))
 
     detail = Text()
     for index, field in enumerate(fields):
-        value = link.get(field)
+        value = data.get(field)
         detail.append(f"{field}:", style="bold")
         if isinstance(value, (dict, list)):
             detail.append("\n")
@@ -188,23 +221,70 @@ def _raw_detail_text(link):
     return detail
 
 
-def cmd_show(device, args):
-    query = DOWNLOAD_LINK_STATE_QUERY.copy()
-    query["linkUUIDs"] = [args.id]
-    links = device.downloads.query_links([query])
-    link = next((link for link in links if link.get("uuid") == args.id), None)
+def _show_payload(device, link_id):
+    link_query = DOWNLOAD_LINK_STATE_QUERY.copy()
+    link_query["linkUUIDs"] = [link_id]
+    try:
+        links = device.downloads.query_links([link_query])
+        link = next((link for link in links if link.get("uuid") == link_id), None)
+    except Exception as e:
+        raise ShowError(f"Failed to query download link: {e}") from e
+
     if link is None:
-        print(f"Download link ID not found: {args.id}", file=sys.stderr)
+        raise ShowError(f"Download link ID not found: {link_id}")
+
+    package = None
+    package_uuid = link.get("packageUUID")
+    if package_uuid is not None:
+        package_query = DOWNLOAD_PACKAGE_STATE_QUERY.copy()
+        package_query["packageUUIDs"] = [package_uuid]
+        try:
+            packages = device.downloads.query_packages([package_query])
+            package = next((pkg for pkg in packages if pkg.get("uuid") == package_uuid), None)
+        except Exception as e:
+            raise ShowError(f"Failed to query parent package: {e}") from e
+
+    try:
+        download_urls = get_download_urls(device, [link_id])
+    except Exception as e:
+        raise ShowError(f"Failed to query download URLs: {e}") from e
+
+    return {
+        "link": link,
+        "package": package,
+        "downloadUrls": download_urls,
+    }
+
+
+def cmd_show(device, args):
+    try:
+        payload = _show_payload(device, args.id)
+    except ShowError as e:
+        print(f"Error: {e}", file=sys.stderr)
         raise SystemExit(1)
 
     if args.as_json:
-        print(json.dumps(link, ensure_ascii=False, indent=2, sort_keys=True))
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
         return
 
     console = Console()
     console.print(Panel(
-        _raw_detail_text(link),
-        title=link.get("name") or str(args.id),
+        _raw_detail_text(payload["link"]),
+        title=f"Link: {payload['link'].get('name') or args.id}",
+        border_style="dim white",
+        expand=False,
+    ))
+
+    console.print(Panel(
+        _raw_detail_text(payload["package"], PACKAGE_DETAIL_FIELDS),
+        title="Package",
+        border_style="dim white",
+        expand=False,
+    ))
+
+    console.print(Panel(
+        Text(json.dumps(payload["downloadUrls"], ensure_ascii=False, indent=2, sort_keys=True)),
+        title="Download URLs",
         border_style="dim white",
         expand=False,
     ))
@@ -339,7 +419,7 @@ def _build_parser():
 
     p_show = sub.add_parser("show")
     p_show.add_argument("id", type=int, help="Download link ID shown by jd ls")
-    p_show.add_argument("--json", action="store_true", dest="as_json", help="Print raw API response as JSON")
+    p_show.add_argument("--json", action="store_true", dest="as_json", help="Print combined raw API data as JSON")
     
     p_gr = sub.add_parser("grabber")
     p_gr.add_argument("-d", "--detail", action="store_true")
