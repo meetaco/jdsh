@@ -200,6 +200,9 @@ def _raw_size(value):
 
 
 def _raw_detail_text(data, preferred_fields=LINK_DETAIL_FIELDS):
+    if data is None:
+        return Text("null")
+
     fields = [field for field in preferred_fields if field in data]
     fields.extend(sorted(field for field in data if field not in preferred_fields))
 
@@ -223,10 +226,10 @@ def _show_payload(device, link_id):
     link_query["linkUUIDs"] = [link_id]
     try:
         links = device.downloads.query_links([link_query])
+        link = next((link for link in links if link.get("uuid") == link_id), None)
     except Exception as e:
         raise ShowError(f"Failed to query download link: {e}") from e
 
-    link = next((link for link in links if link.get("uuid") == link_id), None)
     if link is None:
         raise ShowError(f"Download link ID not found: {link_id}")
 
@@ -237,9 +240,9 @@ def _show_payload(device, link_id):
         package_query["packageUUIDs"] = [package_uuid]
         try:
             packages = device.downloads.query_packages([package_query])
+            package = next((pkg for pkg in packages if pkg.get("uuid") == package_uuid), None)
         except Exception as e:
             raise ShowError(f"Failed to query parent package: {e}") from e
-        package = next((pkg for pkg in packages if pkg.get("uuid") == package_uuid), None)
 
     try:
         download_urls = get_download_urls(device, [link_id])
@@ -272,13 +275,8 @@ def cmd_show(device, args):
         expand=False,
     ))
 
-    package_text = (
-        _raw_detail_text(payload["package"], PACKAGE_DETAIL_FIELDS)
-        if payload["package"] is not None
-        else Text("null")
-    )
     console.print(Panel(
-        package_text,
+        _raw_detail_text(payload["package"], PACKAGE_DETAIL_FIELDS),
         title="Package",
         border_style="dim white",
         expand=False,
