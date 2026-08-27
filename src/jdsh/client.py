@@ -31,6 +31,14 @@ DOWNLOAD_LINK_STATE_QUERY = {
     "priority": True,
 }
 
+# Keep availability refreshes narrow: jd check only needs the fields required
+# to identify the link and read advancedStatus.AvailableStatus.
+CHECK_LINK_STATE_QUERY = {
+    "name": True,
+    "uuid": True,
+    "advancedStatus": True,
+}
+
 # JDownloader's PackageQueryStorable.FULL fields. Package queries do not expose
 # the link password field, so the full package diagnostic surface is safe to use.
 DOWNLOAD_PACKAGE_STATE_QUERY = {
@@ -84,6 +92,14 @@ def get_download_urls(device, link_ids, package_ids=()):
             [link_ids, package_ids, [url_type]],
         )
     return responses
+
+
+def start_online_status_check(device, link_ids, package_ids=()):
+    """Force JDownloader to re-check the selected download links asynchronously."""
+    return device.action(
+        "/downloadsV2/startOnlineStatusCheck",
+        [list(link_ids), list(package_ids)],
+    )
 
 
 class JDClient:
