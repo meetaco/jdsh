@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+import time
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -9,11 +10,13 @@ from rich.padding import Padding
 from rich import box
 
 from .client import (
+    CHECK_LINK_STATE_QUERY,
     COMPACT_LINK_STATE_QUERY,
     DOWNLOAD_LINK_STATE_QUERY,
     DOWNLOAD_PACKAGE_STATE_QUERY,
     JDClient,
     get_download_urls,
+    start_online_status_check,
 )
 from . import tui, utils, config, clipboard
 
@@ -59,8 +62,19 @@ PACKAGE_DETAIL_FIELDS = (
     "comment",
 )
 
+CHECK_TIMEOUT_SECONDS = 30.0
+CHECK_POLL_INTERVAL_SECONDS = 0.1
+# The upstream API queues a force re-check but exposes no per-check completion
+# handle. A very fast check can pass through UNCHECKED between polls, so accept a
+# stable final state after this grace period as the completed result.
+CHECK_FAST_COMPLETION_GRACE_SECONDS = 1.0
+
 
 class ShowError(RuntimeError):
+    pass
+
+
+class CheckError(RuntimeError):
     pass
 
 
@@ -99,6 +113,7 @@ def print_help():
     add_section("Queue Management")
     add_cmd("list (ls)", "[-d]", "List active downloads")
     add_cmd("show", "<id> [--json]", "Show raw link, package, and URL details")
+    add_cmd("check", "<id> [--json]", "Force-refresh a link's online status")
     add_cmd("grabber", "[-d]", "List pending links inside LinkGrabber")
     add_cmd("add", "[<url>...] [--clipboard]", "Add links to LinkGrabber")
     add_cmd("confirm", "", "Move all pending links to Queue")
@@ -126,7 +141,9 @@ def print_help():
         "[dim]# detailed list view:[/]\n"
         "[bold cyan]jd ls -d[/]\n\n"
         "[dim]# inspect one download and related package/URL data:[/]\n"
-        "[bold cyan]jd show[/] [green]123456789[/]"
+        "[bold cyan]jd show[/] [green]123456789[/]\n\n"
+        "[dim]# force-refresh a download's online status:[/]\n"
+        "[bold cyan]jd check[/] [green]123456789[/]"
     )
 
     body = Padding(table, (0, 1))
@@ -290,6 +307,104 @@ def cmd_show(device, args):
     ))
 
 
+def _check_query(link_id):
+    query = CHECK_LINK_STATE_QUERY.copy()
+    query["linkUUIDs"] = [link_id]
+    return query
+
+
+def _query_check_link(device, link_id):
+    try:
+        links = device.downloads.query_links([_check_query(link_id)])
+        return next((link for link in links if link.get("uuid") == link_id), None)
+    except Exception as e:
+        raise CheckError(f"Failed to query download link: {e}") from e
+
+
+def _available_status(link):
+    advanced = link.get("advancedStatus") if link else None
+    if not isinstance(advanced, dict):
+        return None
+    status = advanced.get("AvailableStatus")
+    return status if isinstance(status, dict) else None
+
+
+def _wait_for_online_check(device, link_id, initial_status):
+    initial_id = (initial_status or {}).get("id")
+    started_at = time.monotonic()
+    deadline = started_at + CHECK_TIMEOUT_SECONDS
+    saw_unchecked = initial_id == "UNCHECKED"
+
+    while True:
+        link = _query_check_link(device, link_id)
+        if link is None:
+            raise CheckError(f"Download link ID disappeared during check: {link_id}")
+
+        status = _available_status(link)
+        status_id = (status or {}).get("id")
+        now = time.monotonic()
+
+        if status_id == "UNCHECKED":
+            saw_unchecked = True
+        elif status_id is not None:
+            if saw_unchecked or status_id != initial_id:
+                return link
+            # The force re-check can complete before polling observes UNCHECKED.
+            # Once the worker has had a short grace period, the latest final
+            # status is the best completion signal the API exposes.
+            if now - started_at >= CHECK_FAST_COMPLETION_GRACE_SECONDS:
+                return link
+
+        if now >= deadline:
+            raise CheckError(f"Online status check timed out after {CHECK_TIMEOUT_SECONDS:g}s")
+        time.sleep(CHECK_POLL_INTERVAL_SECONDS)
+
+
+def _check_payload(device, link_id):
+    initial_link = _query_check_link(device, link_id)
+    if initial_link is None:
+        raise CheckError(f"Download link ID not found: {link_id}")
+
+    initial_status = _available_status(initial_link)
+    try:
+        start_online_status_check(device, [link_id])
+    except Exception as e:
+        raise CheckError(f"Failed to start online status check: {e}") from e
+
+    link = _wait_for_online_check(device, link_id, initial_status)
+    return {
+        "uuid": link.get("uuid"),
+        "name": link.get("name"),
+        "availableStatus": _available_status(link),
+    }
+
+
+def cmd_check(device, args):
+    try:
+        payload = _check_payload(device, args.id)
+    except CheckError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        raise SystemExit(1)
+
+    if args.as_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+        return
+
+    status = payload.get("availableStatus") or {}
+    status_id = status.get("id") or "UNKNOWN"
+    label = status.get("label")
+    availability = f"{status_id} ({label})" if label else status_id
+
+    console = Console()
+    table = Table(box=None, show_header=False, padding=(0, 1))
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+    table.add_row("ID", str(payload.get("uuid")))
+    table.add_row("Name", payload.get("name") or "null")
+    table.add_row("Availability", availability)
+    console.print(table)
+
+
 def cmd_list(device, args):
     query = DOWNLOAD_LINK_STATE_QUERY if args.detail else COMPACT_LINK_STATE_QUERY
     links = device.downloads.query_links([query.copy()])
@@ -420,6 +535,10 @@ def _build_parser():
     p_show = sub.add_parser("show")
     p_show.add_argument("id", type=int, help="Download link ID shown by jd ls")
     p_show.add_argument("--json", action="store_true", dest="as_json", help="Print combined raw API data as JSON")
+
+    p_check = sub.add_parser("check")
+    p_check.add_argument("id", type=int, help="Download link ID shown by jd ls")
+    p_check.add_argument("--json", action="store_true", dest="as_json", help="Print refreshed availability as JSON")
     
     p_gr = sub.add_parser("grabber")
     p_gr.add_argument("-d", "--detail", action="store_true")
@@ -484,6 +603,7 @@ def main():
         'status': cmd_status,
         'list': cmd_list, 'ls': cmd_list,
         'show': cmd_show,
+        'check': cmd_check,
         'grabber': cmd_grabber, 'confirm': cmd_confirm,
         'add': cmd_add, 'remove': cmd_remove, 'rm': cmd_remove,
         'replace': cmd_replace, 'start': cmd_simple, 
