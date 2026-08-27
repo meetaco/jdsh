@@ -32,7 +32,25 @@ class CheckCommandTests(unittest.TestCase):
         args = cli._parse_args(["check", "123", "--json"])
         self.assertEqual(args.command, "check")
         self.assertEqual(args.id, 123)
+        self.assertFalse(args.all_links)
         self.assertTrue(args.as_json)
+
+    def test_parser_accepts_check_all_and_json(self):
+        args = cli._parse_args(["check", "--all", "--json"])
+        self.assertEqual(args.command, "check")
+        self.assertIsNone(args.id)
+        self.assertTrue(args.all_links)
+        self.assertTrue(args.as_json)
+
+    def test_parser_requires_id_or_all(self):
+        with patch("sys.stderr", new_callable=io.StringIO), self.assertRaises(SystemExit) as ctx:
+            cli._parse_args(["check"])
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_parser_rejects_id_with_all(self):
+        with patch("sys.stderr", new_callable=io.StringIO), self.assertRaises(SystemExit) as ctx:
+            cli._parse_args(["check", "123", "--all"])
+        self.assertEqual(ctx.exception.code, 2)
 
     def test_start_online_status_check_uses_downloadsv2_endpoint(self):
         device = MagicMock()
@@ -129,6 +147,90 @@ class CheckCommandTests(unittest.TestCase):
 
         self.assertEqual(ctx.exception.code, 1)
         self.assertIn("timed out after 0.5s", stderr.getvalue())
+
+    def test_check_all_submits_every_id_in_one_action_and_returns_immediately(self):
+        device = MagicMock()
+        device.downloads.query_links.return_value = [
+            {"uuid": 123},
+            {"uuid": 456},
+            {"uuid": 789},
+        ]
+
+        with patch.object(cli.time, "sleep") as sleep, \
+             patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            cli.cmd_check(
+                device,
+                SimpleNamespace(id=None, all_links=True, as_json=False),
+            )
+
+        device.downloads.query_links.assert_called_once_with([{"uuid": True}])
+        device.action.assert_called_once_with(
+            "/downloadsV2/startOnlineStatusCheck",
+            [[123, 456, 789], []],
+        )
+        sleep.assert_not_called()
+        self.assertIn("Started online status check for 3 links", stdout.getvalue())
+        self.assertIn("background", stdout.getvalue())
+
+    def test_check_all_json_reports_queued_count(self):
+        device = MagicMock()
+        device.downloads.query_links.return_value = [{"uuid": 123}, {"uuid": 456}]
+
+        with patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            cli.cmd_check(
+                device,
+                SimpleNamespace(id=None, all_links=True, as_json=True),
+            )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload, {"linkCount": 2, "started": True})
+        device.action.assert_called_once_with(
+            "/downloadsV2/startOnlineStatusCheck",
+            [[123, 456], []],
+        )
+
+    def test_check_all_empty_queue_does_not_call_start_endpoint(self):
+        device = MagicMock()
+        device.downloads.query_links.return_value = []
+
+        with patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            cli.cmd_check(
+                device,
+                SimpleNamespace(id=None, all_links=True, as_json=False),
+            )
+
+        self.assertIn("No download links to check", stdout.getvalue())
+        device.action.assert_not_called()
+
+    def test_check_all_query_failure_is_reported_cleanly(self):
+        device = MagicMock()
+        device.downloads.query_links.side_effect = RuntimeError("query unavailable")
+
+        with patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit) as ctx:
+                cli.cmd_check(
+                    device,
+                    SimpleNamespace(id=None, all_links=True, as_json=False),
+                )
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn("Failed to query download links", stderr.getvalue())
+        device.action.assert_not_called()
+
+    def test_check_all_start_failure_is_reported_cleanly(self):
+        device = MagicMock()
+        device.downloads.query_links.return_value = [{"uuid": 123}, {"uuid": 456}]
+        device.action.side_effect = RuntimeError("endpoint unavailable")
+
+        with patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit) as ctx:
+                cli.cmd_check(
+                    device,
+                    SimpleNamespace(id=None, all_links=True, as_json=False),
+                )
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn("Failed to start online status check", stderr.getvalue())
 
 
 if __name__ == "__main__":

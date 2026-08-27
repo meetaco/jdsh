@@ -113,7 +113,7 @@ def print_help():
     add_section("Queue Management")
     add_cmd("list (ls)", "[-d]", "List active downloads")
     add_cmd("show", "<id> [--json]", "Show raw link, package, and URL details")
-    add_cmd("check", "<id> [--json]", "Force-refresh a link's online status")
+    add_cmd("check", "<id> | --all [--json]", "Force-refresh link availability")
     add_cmd("grabber", "[-d]", "List pending links inside LinkGrabber")
     add_cmd("add", "[<url>...] [--clipboard]", "Add links to LinkGrabber")
     add_cmd("confirm", "", "Move all pending links to Queue")
@@ -142,8 +142,10 @@ def print_help():
         "[bold cyan]jd ls -d[/]\n\n"
         "[dim]# inspect one download and related package/URL data:[/]\n"
         "[bold cyan]jd show[/] [green]123456789[/]\n\n"
-        "[dim]# force-refresh a download's online status:[/]\n"
-        "[bold cyan]jd check[/] [green]123456789[/]"
+        "[dim]# force-refresh one download's online status:[/]\n"
+        "[bold cyan]jd check[/] [green]123456789[/]\n\n"
+        "[dim]# queue an online-status refresh for every download:[/]\n"
+        "[bold cyan]jd check --all[/]"
     )
 
     body = Padding(table, (0, 1))
@@ -379,7 +381,47 @@ def _check_payload(device, link_id):
     }
 
 
+def _check_all_payload(device):
+    try:
+        links = device.downloads.query_links([{"uuid": True}])
+        link_ids = list(dict.fromkeys(
+            link.get("uuid") for link in links if link.get("uuid") is not None
+        ))
+    except Exception as e:
+        raise CheckError(f"Failed to query download links: {e}") from e
+
+    if not link_ids:
+        return {"started": False, "linkCount": 0}
+
+    try:
+        # Submit the whole selection in one call so JDownloader owns host-level
+        # queueing, mass link checks, concurrency, and plugin-specific throttling.
+        start_online_status_check(device, link_ids)
+    except Exception as e:
+        raise CheckError(f"Failed to start online status check: {e}") from e
+
+    return {"started": True, "linkCount": len(link_ids)}
+
+
 def cmd_check(device, args):
+    if getattr(args, "all_links", False):
+        try:
+            payload = _check_all_payload(device)
+        except CheckError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            raise SystemExit(1)
+
+        if args.as_json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+        elif payload["started"]:
+            print(
+                f"Started online status check for {payload['linkCount']} links. "
+                "JDownloader will process them in the background."
+            )
+        else:
+            print("No download links to check.")
+        return
+
     try:
         payload = _check_payload(device, args.id)
     except CheckError as e:
@@ -537,8 +579,14 @@ def _build_parser():
     p_show.add_argument("--json", action="store_true", dest="as_json", help="Print combined raw API data as JSON")
 
     p_check = sub.add_parser("check")
-    p_check.add_argument("id", type=int, help="Download link ID shown by jd ls")
-    p_check.add_argument("--json", action="store_true", dest="as_json", help="Print refreshed availability as JSON")
+    p_check.add_argument("id", nargs="?", type=int, help="Download link ID shown by jd ls")
+    p_check.add_argument(
+        "--all",
+        action="store_true",
+        dest="all_links",
+        help="Queue a fresh online-status check for every download link",
+    )
+    p_check.add_argument("--json", action="store_true", dest="as_json", help="Print check result as JSON")
     
     p_gr = sub.add_parser("grabber")
     p_gr.add_argument("-d", "--detail", action="store_true")
@@ -576,6 +624,11 @@ def _parse_args(argv):
     args = parser.parse_args(_normalize_argv(argv))
     if args.command == "add" and not args.urls and not args.clipboard:
         parser.error("jd add requires at least one URL or --clipboard")
+    if args.command == "check":
+        if args.id is None and not args.all_links:
+            parser.error("jd check requires <id> or --all")
+        if args.id is not None and args.all_links:
+            parser.error("jd check accepts either <id> or --all, not both")
     return args
 
 
