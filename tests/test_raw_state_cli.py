@@ -6,10 +6,10 @@ from unittest.mock import MagicMock, patch
 from rich.console import Console
 
 from jdsh import cli
-from jdsh.client import COMPACT_LINK_STATE_QUERY, DOWNLOAD_LINK_STATE_QUERY
+from jdsh.client import DOWNLOAD_LINK_STATE_QUERY, LIST_LINK_STATE_QUERY
 
 
-class CompactRawLinkStateTests(unittest.TestCase):
+class CompactDiagnosticListTests(unittest.TestCase):
     def render_compact(self, **overrides):
         link = {
             "uuid": 123,
@@ -21,31 +21,48 @@ class CompactRawLinkStateTests(unittest.TestCase):
             "enabled": True,
             "skipped": False,
             "finished": False,
+            "host": "example.com",
+            "advancedStatus": {
+                "AvailableStatus": {"id": "TRUE", "label": "Online"},
+            },
         }
         link.update(overrides)
 
         device = MagicMock()
         device.downloads.query_links.return_value = [link]
         output = io.StringIO()
-        console = Console(file=output, force_terminal=False, width=200)
+        console = Console(file=output, force_terminal=False, width=240)
 
         with patch.object(cli, "Console", return_value=console):
             cli.cmd_list(device, SimpleNamespace(detail=False))
 
         device.downloads.query_links.assert_called_once_with(
-            [COMPACT_LINK_STATE_QUERY.copy()]
+            [LIST_LINK_STATE_QUERY.copy()]
         )
         return output.getvalue()
 
-    def test_compact_list_exposes_raw_status_flags(self):
+    def test_compact_list_surfaces_operational_state(self):
         rendered = self.render_compact()
 
-        for header in ("Status", "Running", "Enabled", "Skipped", "Finished"):
+        for header in ("State", "Availability", "Reason", "Host"):
             self.assertIn(header, rendered)
-        self.assertIn("null", rendered)
-        self.assertIn("false", rendered)
-        self.assertIn("true", rendered)
+        self.assertIn("WAITING", rendered)
+        self.assertIn("TRUE (Online)", rendered)
+        self.assertIn("No link-level reason is exposed", rendered)
+        self.assertIn("example.com", rendered)
         self.assertIn("file.zip", rendered)
+
+    def test_compact_list_surfaces_explicit_skip_reason(self):
+        rendered = self.render_compact(
+            skipped=True,
+            advancedStatus={
+                "AvailableStatus": {"id": "TRUE", "label": "Online"},
+                "SkipReason": {"id": "CAPTCHA", "label": "Captcha required"},
+            },
+        )
+
+        self.assertIn("SKIPPED", rendered)
+        self.assertIn("Captcha required", rendered)
 
     def test_compact_list_preserves_zero_total_bytes(self):
         rendered = self.render_compact(bytesLoaded=0, bytesTotal=0)
