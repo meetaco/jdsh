@@ -15,20 +15,26 @@ COMPACT_LINK_STATE_QUERY = {
     "uuid": True,
 }
 
-# Keep diagnostic output broad, but deliberately omit the upstream `password`
-# field so `jd ls -d` and `jd show --json` do not expose download credentials.
-DOWNLOAD_LINK_STATE_QUERY = {
+# The ordinary list view needs enough state to answer the common operational
+# question "why is this link not downloading?" without paying for URL/date fields.
+LIST_LINK_STATE_QUERY = {
     **COMPACT_LINK_STATE_QUERY,
-    "speed": True,
-    "eta": True,
     "advancedStatus": True,
     "extractionStatus": True,
     "host": True,
+    "priority": True,
+}
+
+# Keep diagnostic output broad, but deliberately omit the upstream `password`
+# field so `jd ls -d` and `jd show --json` do not expose download credentials.
+DOWNLOAD_LINK_STATE_QUERY = {
+    **LIST_LINK_STATE_QUERY,
+    "speed": True,
+    "eta": True,
     "url": True,
     "addedDate": True,
     "comment": True,
     "finishedDate": True,
-    "priority": True,
 }
 
 # Keep availability refreshes narrow: jd check only needs the fields required
