@@ -2,23 +2,25 @@ import argparse
 import json
 import sys
 import time
+
+from rich import box
 from rich.console import Console
+from rich.padding import Padding
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from rich.padding import Padding
-from rich import box
 
+from . import clipboard, config, tui, utils
 from .client import (
     CHECK_LINK_STATE_QUERY,
-    COMPACT_LINK_STATE_QUERY,
     DOWNLOAD_LINK_STATE_QUERY,
     DOWNLOAD_PACKAGE_STATE_QUERY,
     JDClient,
+    LIST_LINK_STATE_QUERY,
     get_download_urls,
     start_online_status_check,
 )
-from . import tui, utils, config, clipboard
+from .diagnostics import availability_label, diagnose_link
 
 
 LINK_DETAIL_FIELDS = (
@@ -64,9 +66,6 @@ PACKAGE_DETAIL_FIELDS = (
 
 CHECK_TIMEOUT_SECONDS = 30.0
 CHECK_POLL_INTERVAL_SECONDS = 0.1
-# The upstream API queues a force re-check but exposes no per-check completion
-# handle. A very fast check can pass through UNCHECKED between polls, so accept a
-# stable final state after this grace period as the completed result.
 CHECK_FAST_COMPLETION_GRACE_SECONDS = 1.0
 
 
@@ -75,6 +74,10 @@ class ShowError(RuntimeError):
 
 
 class CheckError(RuntimeError):
+    pass
+
+
+class WhyError(RuntimeError):
     pass
 
 
@@ -111,8 +114,9 @@ def print_help():
     add_cmd("status", "", "Show a static snapshot of the queue")
 
     add_section("Queue Management")
-    add_cmd("list (ls)", "[-d]", "List active downloads")
-    add_cmd("show", "<id> [--json]", "Show raw link, package, and URL details")
+    add_cmd("list (ls)", "[-d]", "List downloads with availability and reason")
+    add_cmd("show", "<id> [--json]", "Show raw link, package, URL, and diagnosis details")
+    add_cmd("why", "<id> [--json]", "Explain why a download is not progressing")
     add_cmd("check", "<id> | --all [--json]", "Force-refresh link availability")
     add_cmd("grabber", "[-d]", "List pending links inside LinkGrabber")
     add_cmd("add", "[<url>...] [--clipboard]", "Add links to LinkGrabber")
@@ -130,21 +134,12 @@ def print_help():
     add_cmd("help", "", "Show this help message")
 
     examples = Text.from_markup(
-        "[dim]# Run the interactive mode:[/]\n"
-        "[bold cyan]jd[/]\n\n"
-        "[dim]# Add links, check them, then start:[/]\n"
-        "[bold cyan]jd add[/] [green]\"http://site.com/file.exe\"[/]\n"
-        "[bold cyan]jd add[/] [green]\"http://site.com/archive1.zip\"[/] [green]\"http://site.com/archive2.zip\"[/]\n"
-        "[bold cyan]jd add --clipboard[/]\n"
-        "[bold cyan]jd grabber[/]\n"
-        "[bold cyan]jd confirm[/]\n\n"
-        "[dim]# detailed list view:[/]\n"
-        "[bold cyan]jd ls -d[/]\n\n"
-        "[dim]# inspect one download and related package/URL data:[/]\n"
+        "[dim]# inspect queue state:[/]\n"
+        "[bold cyan]jd ls[/]\n"
+        "[bold cyan]jd why[/] [green]123456789[/]\n"
         "[bold cyan]jd show[/] [green]123456789[/]\n\n"
-        "[dim]# force-refresh one download's online status:[/]\n"
-        "[bold cyan]jd check[/] [green]123456789[/]\n\n"
-        "[dim]# queue an online-status refresh for every download:[/]\n"
+        "[dim]# force-refresh availability:[/]\n"
+        "[bold cyan]jd check[/] [green]123456789[/]\n"
         "[bold cyan]jd check --all[/]"
     )
 
@@ -240,6 +235,21 @@ def _raw_detail_text(data, preferred_fields=LINK_DETAIL_FIELDS):
     return detail
 
 
+def _diagnosis_text(diagnosis):
+    text = Text()
+    text.append("state: ", style="bold")
+    text.append(str(diagnosis.get("state", "UNKNOWN")))
+    text.append("\nreason: ", style="bold")
+    text.append(str(diagnosis.get("reason", "")))
+    text.append("\nsource: ", style="bold")
+    text.append(str(diagnosis.get("source", "unknown")))
+    evidence = diagnosis.get("evidence")
+    if evidence:
+        text.append("\nevidence:\n", style="bold")
+        text.append(json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True))
+    return text
+
+
 def _show_payload(device, link_id):
     link_query = DOWNLOAD_LINK_STATE_QUERY.copy()
     link_query["linkUUIDs"] = [link_id]
@@ -272,6 +282,7 @@ def _show_payload(device, link_id):
         "link": link,
         "package": package,
         "downloadUrls": download_urls,
+        "diagnosis": diagnose_link(link),
     }
 
 
@@ -291,6 +302,13 @@ def cmd_show(device, args):
         _raw_detail_text(payload["link"]),
         title=f"Link: {payload['link'].get('name') or args.id}",
         border_style="dim white",
+        expand=False,
+    ))
+
+    console.print(Panel(
+        _diagnosis_text(payload["diagnosis"]),
+        title="Diagnosis",
+        border_style="yellow",
         expand=False,
     ))
 
@@ -447,8 +465,72 @@ def cmd_check(device, args):
     console.print(table)
 
 
+def _why_payload(device, link_id):
+    query = DOWNLOAD_LINK_STATE_QUERY.copy()
+    query["linkUUIDs"] = [link_id]
+    try:
+        links = device.downloads.query_links([query])
+        link = next((item for item in links if item.get("uuid") == link_id), None)
+    except Exception as e:
+        raise WhyError(f"Failed to query download link: {e}") from e
+
+    if link is None:
+        raise WhyError(f"Download link ID not found: {link_id}")
+
+    controller_state = None
+    try:
+        controller_state = device.downloadcontroller.get_current_state()
+    except Exception:
+        pass
+
+    return {
+        "uuid": link.get("uuid"),
+        "name": link.get("name"),
+        "controllerState": controller_state,
+        "diagnosis": diagnose_link(link, controller_state=controller_state),
+        "status": link.get("status"),
+        "advancedStatus": link.get("advancedStatus"),
+        "extractionStatus": link.get("extractionStatus"),
+    }
+
+
+def cmd_why(device, args):
+    try:
+        payload = _why_payload(device, args.id)
+    except WhyError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        raise SystemExit(1)
+
+    if args.as_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+        return
+
+    diagnosis = payload["diagnosis"]
+    console = Console()
+    table = Table(box=None, show_header=False, padding=(0, 1))
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+    table.add_row("ID", str(payload["uuid"]))
+    table.add_row("Name", payload.get("name") or "null")
+    table.add_row("State", str(diagnosis["state"]))
+    table.add_row("Availability", availability_label({"advancedStatus": payload.get("advancedStatus")}))
+    table.add_row("Reason", str(diagnosis["reason"]))
+    table.add_row("Source", str(diagnosis["source"]))
+    table.add_row(
+        "Controller",
+        "UNKNOWN" if payload.get("controllerState") is None else str(payload["controllerState"]),
+    )
+    console.print(table)
+
+    if diagnosis["source"] == "unknown":
+        console.print(
+            "[dim]JDownloader did not expose a link-level reason; "
+            "the raw evidence remains available via 'jd show <id>'.[/]"
+        )
+
+
 def cmd_list(device, args):
-    query = DOWNLOAD_LINK_STATE_QUERY if args.detail else COMPACT_LINK_STATE_QUERY
+    query = DOWNLOAD_LINK_STATE_QUERY if args.detail else LIST_LINK_STATE_QUERY
     links = device.downloads.query_links([query.copy()])
     if not links:
         return print("Download queue is empty.")
@@ -466,25 +548,24 @@ def cmd_list(device, args):
     else:
         table = Table(box=box.SIMPLE_HEAD)
         table.add_column("ID", style="dim", no_wrap=True)
+        table.add_column("State")
+        table.add_column("Availability")
         table.add_column("Done/Total", justify="right")
-        table.add_column("Status")
-        table.add_column("Running", justify="center")
-        table.add_column("Enabled", justify="center")
-        table.add_column("Skipped", justify="center")
-        table.add_column("Finished", justify="center")
+        table.add_column("Host")
+        table.add_column("Reason")
         table.add_column("Name")
 
         for link in links:
+            diagnosis = diagnose_link(link)
             size_fmt = f"{_raw_size(link.get('bytesLoaded'))}/{_raw_size(link.get('bytesTotal'))}"
 
             table.add_row(
                 f"{link['uuid']}",
+                str(diagnosis["state"]),
+                availability_label(link),
                 size_fmt,
-                _raw_value(link.get('status')),
-                _raw_value(link.get('running')),
-                _raw_value(link.get('enabled')),
-                _raw_value(link.get('skipped')),
-                _raw_value(link.get('finished')),
+                _raw_value(link.get("host")),
+                str(diagnosis["reason"]),
                 link['name'],
             )
         console.print(table)
@@ -578,6 +659,10 @@ def _build_parser():
     p_show.add_argument("id", type=int, help="Download link ID shown by jd ls")
     p_show.add_argument("--json", action="store_true", dest="as_json", help="Print combined raw API data as JSON")
 
+    p_why = sub.add_parser("why")
+    p_why.add_argument("id", type=int, help="Download link ID shown by jd ls")
+    p_why.add_argument("--json", action="store_true", dest="as_json", help="Print diagnosis and source evidence as JSON")
+
     p_check = sub.add_parser("check")
     p_check.add_argument("id", nargs="?", type=int, help="Download link ID shown by jd ls")
     p_check.add_argument(
@@ -656,6 +741,7 @@ def main():
         'status': cmd_status,
         'list': cmd_list, 'ls': cmd_list,
         'show': cmd_show,
+        'why': cmd_why,
         'check': cmd_check,
         'grabber': cmd_grabber, 'confirm': cmd_confirm,
         'add': cmd_add, 'remove': cmd_remove, 'rm': cmd_remove,
