@@ -126,7 +126,7 @@ def cmd_add(device, args):
     link_str = ",".join(links)
 
     device.linkgrabber.add_links([{"links": link_str, "autostart": False, "priority": "DEFAULT"}])
-    print(f"Added links to Grabber. Run 'jd confirm' to start.")
+    print("Added links to Grabber. Run 'jd confirm' to start.")
 
 
 def cmd_confirm(device, _):
