@@ -1,161 +1,17 @@
 import argparse
 import json
 import sys
-import time
 
-from rich import box
-from rich.console import Console
-from rich.padding import Padding
-from rich.panel import Panel
-from rich.table import Table
-from rich.text import Text
-
-from . import clipboard, config, tui, utils
+from . import clipboard, config, rendering, services, tui
 from .client import (
-    CHECK_LINK_STATE_QUERY,
     DOWNLOAD_LINK_STATE_QUERY,
-    DOWNLOAD_PACKAGE_STATE_QUERY,
     JDClient,
     LIST_LINK_STATE_QUERY,
-    get_download_urls,
-    start_online_status_check,
 )
-from .diagnostics import availability_label, diagnose_link
-
-
-LINK_DETAIL_FIELDS = (
-    "uuid",
-    "name",
-    "packageUUID",
-    "status",
-    "advancedStatus",
-    "running",
-    "enabled",
-    "finished",
-    "skipped",
-    "extractionStatus",
-    "priority",
-    "eta",
-    "speed",
-    "host",
-    "bytesLoaded",
-    "bytesTotal",
-    "addedDate",
-    "finishedDate",
-    "comment",
-    "url",
-)
-
-PACKAGE_DETAIL_FIELDS = (
-    "uuid",
-    "name",
-    "status",
-    "running",
-    "enabled",
-    "finished",
-    "priority",
-    "eta",
-    "speed",
-    "bytesLoaded",
-    "bytesTotal",
-    "saveTo",
-    "childCount",
-    "hosts",
-    "comment",
-)
-
-CHECK_TIMEOUT_SECONDS = 30.0
-CHECK_POLL_INTERVAL_SECONDS = 0.1
-CHECK_FAST_COMPLETION_GRACE_SECONDS = 1.0
-
-
-class ShowError(RuntimeError):
-    pass
-
-
-class CheckError(RuntimeError):
-    pass
-
-
-class WhyError(RuntimeError):
-    pass
 
 
 def print_help():
-    console = Console()
-    
-    # Header
-    title = Text.assemble(
-        ("JDSH ", "bold magenta"), 
-        (f"v{config.VERSION}", "dim white"),
-    )
-    
-    # Syntax
-    syntax = Text.assemble(
-        ("Usage: ", "bold yellow"),
-        ("jd ", "bold cyan"),
-        ("[COMMAND] ", "bold green"),
-        ("[ARGS]...", "dim white")
-    )
-
-    # Command Table
-    table = Table(box=None, padding=(0, 2), show_header=False, expand=True)
-    table.add_column("Command", style="bold cyan", width=5)
-    table.add_column("Args", style="cyan", width=5)
-    table.add_column("Description", style="white")
-
-    def add_cmd(name, args, desc):
-        table.add_row(name, args, desc)
-    def add_section(name):
-        table.add_row(Text(f"\n{name}", style="bold yellow"))
-
-    add_section("Dashboard")
-    add_cmd("jd", "", "Launch the Interactive TUI")
-    add_cmd("status", "", "Show a static snapshot of the queue")
-
-    add_section("Queue Management")
-    add_cmd("list (ls)", "[-d]", "List downloads with availability and reason")
-    add_cmd("show", "<id> [--json]", "Show raw link, package, URL, and diagnosis details")
-    add_cmd("why", "<id> [--json]", "Explain why a download is not progressing")
-    add_cmd("check", "<id> | --all [--json]", "Force-refresh link availability")
-    add_cmd("grabber", "[-d]", "List pending links inside LinkGrabber")
-    add_cmd("add", "[<url>...] [--clipboard] [-f <path>]", "Add links to LinkGrabber (file: one URL per line)")
-    add_cmd("confirm", "", "Move all pending links to Queue")
-    add_cmd("remove (rm)", "<uuid>...", "Remove items by ID")
-
-    add_section("Controls")
-    add_cmd("start", "", "Start/Resume downloads")
-    add_cmd("stop", "", "Pause/Stop downloads")
-    add_cmd("clear", "", "Remove finished items from list")
-    add_cmd("replace", "<uuid> <url>", "Replace a dead link URL")
-
-    add_section("Utils")
-    add_cmd("version", "", "Show shell and core versions")
-    add_cmd("help", "", "Show this help message")
-
-    examples = Text.from_markup(
-        "[dim]# inspect queue state:[/]\n"
-        "[bold cyan]jd ls[/]\n"
-        "[bold cyan]jd why[/] [green]123456789[/]\n"
-        "[bold cyan]jd show[/] [green]123456789[/]\n\n"
-        "[dim]# force-refresh availability:[/]\n"
-        "[bold cyan]jd check[/] [green]123456789[/]\n"
-        "[bold cyan]jd check --all[/]"
-    )
-
-    body = Padding(table, (0, 1))
-    
-    console.print()
-    console.print(Panel(
-        body,
-        title=title,
-        border_style="#333333",
-        box=box.ROUNDED,
-        title_align="left"
-    ))
-    console.print(Padding(syntax, (1, 2)))
-    console.print(Padding(examples, (0, 2)))
-    console.print()
+    rendering.print_help()
 
 
 def cmd_status(device, args):
@@ -166,130 +22,15 @@ def cmd_status(device, args):
             "speed": True, "running": True, "eta": True, "status": True
         }])
         
-        active = [l for l in links if l.get('running')]
-        current_speed = sum(l.get('speed', 0) for l in active)
-
-        console = Console()
-        console.print(f"[bold]State:[/bold]  {state}")
-        console.print(f"[bold]Speed:[/bold]  {utils.human_size(current_speed)}/s")
-        console.print(f"[bold]Active:[/bold] {len(active)}")
-        
-        if active:
-            table = Table(box=box.SIMPLE_HEAD, show_edge=False)
-            table.add_column("Name")
-            table.add_column("%", justify="right")
-            table.add_column("Size", justify="right")
-            table.add_column("Speed", justify="right", style="cyan")
-            table.add_column("ETA", justify="right", style="green")
-
-            for l in active:
-                total = l.get('bytesTotal', 1) or 1
-                pct = (l.get('bytesLoaded', 0) / total) * 100
-                size_str = f"{utils.human_size(l.get('bytesLoaded',0))}/{utils.human_size(total)}"
-                
-                table.add_row(
-                    l['name'], 
-                    f"{pct:.1f}%", 
-                    size_str, 
-                    f"{utils.human_size(l.get('speed',0))}/s", 
-                    utils.human_eta(l.get('eta', 0))
-                )
-            console.print(table)
+        rendering.render_status(state, links)
     except Exception as e:
         print(f"Error fetching status: {e}")
 
 
-def _raw_value(value):
-    if value is None:
-        return "null"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    return str(value)
-
-
-def _raw_size(value):
-    if value is None:
-        return "null"
-    return utils.human_size(value)
-
-
-def _raw_detail_text(data, preferred_fields=LINK_DETAIL_FIELDS):
-    if data is None:
-        return Text("null")
-
-    fields = [field for field in preferred_fields if field in data]
-    fields.extend(sorted(field for field in data if field not in preferred_fields))
-
-    detail = Text()
-    for index, field in enumerate(fields):
-        value = data.get(field)
-        detail.append(f"{field}:", style="bold")
-        if isinstance(value, (dict, list)):
-            detail.append("\n")
-            detail.append(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True))
-        else:
-            detail.append(" ")
-            detail.append(_raw_value(value))
-        if index < len(fields) - 1:
-            detail.append("\n")
-    return detail
-
-
-def _diagnosis_text(diagnosis):
-    text = Text()
-    text.append("state: ", style="bold")
-    text.append(str(diagnosis.get("state", "UNKNOWN")))
-    text.append("\nreason: ", style="bold")
-    text.append(str(diagnosis.get("reason", "")))
-    text.append("\nsource: ", style="bold")
-    text.append(str(diagnosis.get("source", "unknown")))
-    evidence = diagnosis.get("evidence")
-    if evidence:
-        text.append("\nevidence:\n", style="bold")
-        text.append(json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True))
-    return text
-
-
-def _show_payload(device, link_id):
-    link_query = DOWNLOAD_LINK_STATE_QUERY.copy()
-    link_query["linkUUIDs"] = [link_id]
-    try:
-        links = device.downloads.query_links([link_query])
-        link = next((link for link in links if link.get("uuid") == link_id), None)
-    except Exception as e:
-        raise ShowError(f"Failed to query download link: {e}") from e
-
-    if link is None:
-        raise ShowError(f"Download link ID not found: {link_id}")
-
-    package = None
-    package_uuid = link.get("packageUUID")
-    if package_uuid is not None:
-        package_query = DOWNLOAD_PACKAGE_STATE_QUERY.copy()
-        package_query["packageUUIDs"] = [package_uuid]
-        try:
-            packages = device.downloads.query_packages([package_query])
-            package = next((pkg for pkg in packages if pkg.get("uuid") == package_uuid), None)
-        except Exception as e:
-            raise ShowError(f"Failed to query parent package: {e}") from e
-
-    try:
-        download_urls = get_download_urls(device, [link_id])
-    except Exception as e:
-        raise ShowError(f"Failed to query download URLs: {e}") from e
-
-    return {
-        "link": link,
-        "package": package,
-        "downloadUrls": download_urls,
-        "diagnosis": diagnose_link(link),
-    }
-
-
 def cmd_show(device, args):
     try:
-        payload = _show_payload(device, args.id)
-    except ShowError as e:
+        payload = services.show_download(device, args.id)
+    except services.ShowError as e:
         print(f"Error: {e}", file=sys.stderr)
         raise SystemExit(1)
 
@@ -297,135 +38,14 @@ def cmd_show(device, args):
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
         return
 
-    console = Console()
-    console.print(Panel(
-        _raw_detail_text(payload["link"]),
-        title=f"Link: {payload['link'].get('name') or args.id}",
-        border_style="dim white",
-        expand=False,
-    ))
-
-    console.print(Panel(
-        _diagnosis_text(payload["diagnosis"]),
-        title="Diagnosis",
-        border_style="yellow",
-        expand=False,
-    ))
-
-    console.print(Panel(
-        _raw_detail_text(payload["package"], PACKAGE_DETAIL_FIELDS),
-        title="Package",
-        border_style="dim white",
-        expand=False,
-    ))
-
-    console.print(Panel(
-        Text(json.dumps(payload["downloadUrls"], ensure_ascii=False, indent=2, sort_keys=True)),
-        title="Download URLs",
-        border_style="dim white",
-        expand=False,
-    ))
-
-
-def _check_query(link_id):
-    query = CHECK_LINK_STATE_QUERY.copy()
-    query["linkUUIDs"] = [link_id]
-    return query
-
-
-def _query_check_link(device, link_id):
-    try:
-        links = device.downloads.query_links([_check_query(link_id)])
-        return next((link for link in links if link.get("uuid") == link_id), None)
-    except Exception as e:
-        raise CheckError(f"Failed to query download link: {e}") from e
-
-
-def _available_status(link):
-    advanced = link.get("advancedStatus") if link else None
-    if not isinstance(advanced, dict):
-        return None
-    status = advanced.get("AvailableStatus")
-    return status if isinstance(status, dict) else None
-
-
-def _wait_for_online_check(device, link_id, initial_status):
-    initial_id = (initial_status or {}).get("id")
-    started_at = time.monotonic()
-    deadline = started_at + CHECK_TIMEOUT_SECONDS
-    saw_unchecked = initial_id == "UNCHECKED"
-
-    while True:
-        link = _query_check_link(device, link_id)
-        if link is None:
-            raise CheckError(f"Download link ID disappeared during check: {link_id}")
-
-        status = _available_status(link)
-        status_id = (status or {}).get("id")
-        now = time.monotonic()
-
-        if status_id == "UNCHECKED":
-            saw_unchecked = True
-        elif status_id is not None:
-            if saw_unchecked or status_id != initial_id:
-                return link
-            # The force re-check can complete before polling observes UNCHECKED.
-            # Once the worker has had a short grace period, the latest final
-            # status is the best completion signal the API exposes.
-            if now - started_at >= CHECK_FAST_COMPLETION_GRACE_SECONDS:
-                return link
-
-        if now >= deadline:
-            raise CheckError(f"Online status check timed out after {CHECK_TIMEOUT_SECONDS:g}s")
-        time.sleep(CHECK_POLL_INTERVAL_SECONDS)
-
-
-def _check_payload(device, link_id):
-    initial_link = _query_check_link(device, link_id)
-    if initial_link is None:
-        raise CheckError(f"Download link ID not found: {link_id}")
-
-    initial_status = _available_status(initial_link)
-    try:
-        start_online_status_check(device, [link_id])
-    except Exception as e:
-        raise CheckError(f"Failed to start online status check: {e}") from e
-
-    link = _wait_for_online_check(device, link_id, initial_status)
-    return {
-        "uuid": link.get("uuid"),
-        "name": link.get("name"),
-        "availableStatus": _available_status(link),
-    }
-
-
-def _check_all_payload(device):
-    try:
-        links = device.downloads.query_links([{"uuid": True}])
-        link_ids = list(dict.fromkeys(
-            link.get("uuid") for link in links if link.get("uuid") is not None
-        ))
-    except Exception as e:
-        raise CheckError(f"Failed to query download links: {e}") from e
-
-    if not link_ids:
-        return {"started": False, "linkCount": 0}
-
-    try:
-        # Submit the whole selection in one call so JDownloader owns host-level
-        # queueing, mass link checks, concurrency, and plugin-specific throttling.
-        start_online_status_check(device, link_ids)
-    except Exception as e:
-        raise CheckError(f"Failed to start online status check: {e}") from e
-
-    return {"started": True, "linkCount": len(link_ids)}
+    rendering.render_show(payload, args.id)
 
 
 def cmd_check(device, args):
     if getattr(args, "all_links", False):
         try:
-            payload = _check_all_payload(device)
-        except CheckError as e:
+            payload = services.check_all_downloads(device)
+        except services.CheckError as e:
             print(f"Error: {e}", file=sys.stderr)
             raise SystemExit(1)
 
@@ -441,8 +61,8 @@ def cmd_check(device, args):
         return
 
     try:
-        payload = _check_payload(device, args.id)
-    except CheckError as e:
+        payload = services.check_download(device, args.id)
+    except services.CheckError as e:
         print(f"Error: {e}", file=sys.stderr)
         raise SystemExit(1)
 
@@ -450,54 +70,13 @@ def cmd_check(device, args):
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
         return
 
-    status = payload.get("availableStatus") or {}
-    status_id = status.get("id") or "UNKNOWN"
-    label = status.get("label")
-    availability = f"{status_id} ({label})" if label else status_id
-
-    console = Console()
-    table = Table(box=None, show_header=False, padding=(0, 1))
-    table.add_column("Field", style="bold")
-    table.add_column("Value")
-    table.add_row("ID", str(payload.get("uuid")))
-    table.add_row("Name", payload.get("name") or "null")
-    table.add_row("Availability", availability)
-    console.print(table)
-
-
-def _why_payload(device, link_id):
-    query = DOWNLOAD_LINK_STATE_QUERY.copy()
-    query["linkUUIDs"] = [link_id]
-    try:
-        links = device.downloads.query_links([query])
-        link = next((item for item in links if item.get("uuid") == link_id), None)
-    except Exception as e:
-        raise WhyError(f"Failed to query download link: {e}") from e
-
-    if link is None:
-        raise WhyError(f"Download link ID not found: {link_id}")
-
-    controller_state = None
-    try:
-        controller_state = device.downloadcontroller.get_current_state()
-    except Exception:
-        pass
-
-    return {
-        "uuid": link.get("uuid"),
-        "name": link.get("name"),
-        "controllerState": controller_state,
-        "diagnosis": diagnose_link(link, controller_state=controller_state),
-        "status": link.get("status"),
-        "advancedStatus": link.get("advancedStatus"),
-        "extractionStatus": link.get("extractionStatus"),
-    }
+    rendering.render_check(payload)
 
 
 def cmd_why(device, args):
     try:
-        payload = _why_payload(device, args.id)
-    except WhyError as e:
+        payload = services.explain_download(device, args.id)
+    except services.WhyError as e:
         print(f"Error: {e}", file=sys.stderr)
         raise SystemExit(1)
 
@@ -505,89 +84,18 @@ def cmd_why(device, args):
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
         return
 
-    diagnosis = payload["diagnosis"]
-    console = Console()
-    table = Table(box=None, show_header=False, padding=(0, 1))
-    table.add_column("Field", style="bold")
-    table.add_column("Value")
-    table.add_row("ID", str(payload["uuid"]))
-    table.add_row("Name", payload.get("name") or "null")
-    table.add_row("State", str(diagnosis["state"]))
-    table.add_row("Availability", availability_label({"advancedStatus": payload.get("advancedStatus")}))
-    table.add_row("Reason", str(diagnosis["reason"]))
-    table.add_row("Source", str(diagnosis["source"]))
-    table.add_row(
-        "Controller",
-        "UNKNOWN" if payload.get("controllerState") is None else str(payload["controllerState"]),
-    )
-    console.print(table)
-
-    if diagnosis["source"] == "unknown":
-        console.print(
-            "[dim]JDownloader did not expose a link-level reason; "
-            "the raw evidence remains available via 'jd show <id>'.[/]"
-        )
+    rendering.render_why(payload)
 
 
 def cmd_list(device, args):
     query = DOWNLOAD_LINK_STATE_QUERY if args.detail else LIST_LINK_STATE_QUERY
     links = device.downloads.query_links([query.copy()])
-    if not links:
-        return print("Download queue is empty.")
-
-    console = Console()
-    if args.detail:
-        for link in links:
-            panel = Panel(
-                _raw_detail_text(link),
-                title=link['name'],
-                border_style="dim white",
-                expand=False
-            )
-            console.print(panel)
-    else:
-        table = Table(box=box.SIMPLE_HEAD)
-        table.add_column("ID", style="dim", no_wrap=True)
-        table.add_column("State")
-        table.add_column("Availability")
-        table.add_column("Done/Total", justify="right")
-        table.add_column("Host")
-        table.add_column("Reason")
-        table.add_column("Name")
-
-        for link in links:
-            diagnosis = diagnose_link(link)
-            size_fmt = f"{_raw_size(link.get('bytesLoaded'))}/{_raw_size(link.get('bytesTotal'))}"
-
-            table.add_row(
-                f"{link['uuid']}",
-                str(diagnosis["state"]),
-                availability_label(link),
-                size_fmt,
-                _raw_value(link.get("host")),
-                str(diagnosis["reason"]),
-                link['name'],
-            )
-        console.print(table)
+    rendering.render_list(links, detail=args.detail)
 
 
 def cmd_grabber(device, args):
     links = device.linkgrabber.query_links([{"name": True, "uuid": True, "url": True}])
-    if not links: return print("LinkGrabber is empty.")
-    
-    console = Console()
-    table = Table(title=f"Pending Links ({len(links)})", box=box.SIMPLE)
-    table.add_column("ID", style="dim")
-    table.add_column("Name")
-    if args.detail: table.add_column("URL", style="blue")
-
-    for l in links:
-        row = [str(l['uuid']), l['name']]
-        if args.detail: row.append(l.get('url', ''))
-        table.add_row(*row)
-    
-    console.print(table)
-    console.print("\n[green]Run 'jd confirm' to start downloading.[/]")
+    rendering.render_grabber(links, detail=args.detail)
 
 
 def cmd_add(device, args):

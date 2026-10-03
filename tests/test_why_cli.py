@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from rich.console import Console
 
-from jdsh import cli
+from jdsh import cli, rendering
 from jdsh.client import DOWNLOAD_LINK_STATE_QUERY
 from jdsh.diagnostics import diagnose_link
 
@@ -111,7 +111,7 @@ class WhyCommandTests(unittest.TestCase):
         output = io.StringIO()
         console = Console(file=output, force_terminal=False, width=200)
 
-        with patch.object(cli, "Console", return_value=console):
+        with patch.object(rendering, "Console", return_value=console):
             cli.cmd_why(device, SimpleNamespace(id=123, as_json=False))
 
         device.downloads.query_links.assert_called_once_with([self.query(123)])

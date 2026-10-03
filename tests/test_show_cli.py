@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, call, patch
 
 from rich.console import Console
 
-from jdsh import cli
+from jdsh import cli, rendering
 from jdsh.client import (
     DOWNLOAD_LINK_STATE_QUERY,
     DOWNLOAD_PACKAGE_STATE_QUERY,
@@ -82,7 +82,7 @@ class ShowCommandTests(unittest.TestCase):
         output = io.StringIO()
         console = Console(file=output, force_terminal=False, width=200)
 
-        with patch.object(cli, "Console", return_value=console):
+        with patch.object(rendering, "Console", return_value=console):
             cli.cmd_show(device, SimpleNamespace(id=123, as_json=False))
 
         device.downloads.query_links.assert_called_once_with([self.show_query(123)])
@@ -141,7 +141,7 @@ class ShowCommandTests(unittest.TestCase):
         output = io.StringIO()
         console = Console(file=output, force_terminal=False, width=200)
 
-        with patch.object(cli, "Console", return_value=console):
+        with patch.object(rendering, "Console", return_value=console):
             cli.cmd_show(device, SimpleNamespace(id=123, as_json=False))
 
         rendered = output.getvalue()
@@ -187,7 +187,7 @@ class ShowCommandTests(unittest.TestCase):
         device.action.assert_not_called()
 
     def test_nested_values_start_on_the_next_line(self):
-        text = cli._raw_detail_text(
+        text = rendering._raw_detail_text(
             {"uuid": 123, "advancedStatus": {"reason": "CAPTCHA"}}
         ).plain
 
@@ -195,7 +195,7 @@ class ShowCommandTests(unittest.TestCase):
         self.assertNotIn("advancedStatus: {", text)
 
     def test_detail_renders_unanticipated_returned_fields(self):
-        text = cli._raw_detail_text(
+        text = rendering._raw_detail_text(
             {"uuid": 123, "name": "file.zip", "futureField": {"x": 1}}
         ).plain
 
@@ -203,12 +203,12 @@ class ShowCommandTests(unittest.TestCase):
         self.assertIn('"x": 1', text)
 
     def test_detail_none_renders_null(self):
-        self.assertEqual(cli._raw_detail_text(None).plain, "null")
+        self.assertEqual(rendering._raw_detail_text(None).plain, "null")
 
     def test_package_detail_uses_package_field_order(self):
-        text = cli._raw_detail_text(
+        text = rendering._raw_detail_text(
             {"uuid": 999, "name": "package", "saveTo": "/downloads", "childCount": 1},
-            cli.PACKAGE_DETAIL_FIELDS,
+            rendering.PACKAGE_DETAIL_FIELDS,
         ).plain
 
         self.assertLess(text.index("saveTo:"), text.index("childCount:"))
@@ -222,7 +222,7 @@ class ShowCommandTests(unittest.TestCase):
         )
         for priority, expected in cases:
             with self.subTest(priority=priority):
-                text = cli._raw_detail_text({"uuid": 123, "priority": priority}).plain
+                text = rendering._raw_detail_text({"uuid": 123, "priority": priority}).plain
                 self.assertIn(expected, text)
 
     def test_show_query_requests_extended_diagnostic_fields(self):

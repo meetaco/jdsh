@@ -3,7 +3,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, mock_open, patch
 
-from jdsh import cli, clipboard
+from jdsh import cli, clipboard, rendering
 from jdsh.client import (
     COMPACT_LINK_STATE_QUERY,
     DOWNLOAD_LINK_STATE_QUERY,
@@ -207,7 +207,7 @@ class RawLinkStateTests(unittest.TestCase):
             },
         }
 
-        text = cli._raw_detail_text(link).plain
+        text = rendering._raw_detail_text(link).plain
         self.assertIn("status: null", text)
         self.assertIn("running: false", text)
         self.assertIn("enabled: true", text)
