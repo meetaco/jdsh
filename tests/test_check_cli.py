@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, call, patch
 
 from rich.console import Console
 
-from jdsh import cli
+from jdsh import cli, rendering, services
 from jdsh.client import CHECK_LINK_STATE_QUERY, start_online_status_check
 
 
@@ -70,9 +70,9 @@ class CheckCommandTests(unittest.TestCase):
         output = io.StringIO()
         console = Console(file=output, force_terminal=False, width=120)
 
-        with patch.object(cli, "Console", return_value=console), \
-             patch.object(cli.time, "monotonic", side_effect=[0.0, 0.1, 0.2, 0.3]), \
-             patch.object(cli.time, "sleep"):
+        with patch.object(rendering, "Console", return_value=console), \
+             patch.object(services.time, "monotonic", side_effect=[0.0, 0.1, 0.2, 0.3]), \
+             patch.object(services.time, "sleep"):
             cli.cmd_check(device, SimpleNamespace(id=123, as_json=False))
 
         self.assertEqual(device.downloads.query_links.call_args_list, [
@@ -97,8 +97,8 @@ class CheckCommandTests(unittest.TestCase):
         ]
         times = [0.0, 0.1, 0.2, 1.1]
 
-        with patch.object(cli.time, "monotonic", side_effect=times), \
-             patch.object(cli.time, "sleep"), \
+        with patch.object(services.time, "monotonic", side_effect=times), \
+             patch.object(services.time, "sleep"), \
              patch("sys.stdout", new_callable=io.StringIO) as stdout:
             cli.cmd_check(device, SimpleNamespace(id=123, as_json=True))
 
@@ -138,9 +138,9 @@ class CheckCommandTests(unittest.TestCase):
             [self.link("UNCHECKED")],
         ]
 
-        with patch.object(cli, "CHECK_TIMEOUT_SECONDS", 0.5), \
-             patch.object(cli.time, "monotonic", side_effect=[0.0, 0.1, 0.2, 0.6]), \
-             patch.object(cli.time, "sleep"), \
+        with patch.object(services, "CHECK_TIMEOUT_SECONDS", 0.5), \
+             patch.object(services.time, "monotonic", side_effect=[0.0, 0.1, 0.2, 0.6]), \
+             patch.object(services.time, "sleep"), \
              patch("sys.stderr", new_callable=io.StringIO) as stderr:
             with self.assertRaises(SystemExit) as ctx:
                 cli.cmd_check(device, SimpleNamespace(id=123, as_json=False))
@@ -156,7 +156,7 @@ class CheckCommandTests(unittest.TestCase):
             {"uuid": 789},
         ]
 
-        with patch.object(cli.time, "sleep") as sleep, \
+        with patch.object(services.time, "sleep") as sleep, \
              patch("sys.stdout", new_callable=io.StringIO) as stdout:
             cli.cmd_check(
                 device,

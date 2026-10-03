@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from rich.console import Console
 
-from jdsh import cli
+from jdsh import cli, rendering
 from jdsh.client import DOWNLOAD_LINK_STATE_QUERY, LIST_LINK_STATE_QUERY
 
 
@@ -33,7 +33,7 @@ class CompactDiagnosticListTests(unittest.TestCase):
         output = io.StringIO()
         console = Console(file=output, force_terminal=False, width=240)
 
-        with patch.object(cli, "Console", return_value=console):
+        with patch.object(rendering, "Console", return_value=console):
             cli.cmd_list(device, SimpleNamespace(detail=False))
 
         device.downloads.query_links.assert_called_once_with(
@@ -96,7 +96,7 @@ class CompactDiagnosticListTests(unittest.TestCase):
         output = io.StringIO()
         console = Console(file=output, force_terminal=False, width=200)
 
-        with patch.object(cli, "Console", return_value=console):
+        with patch.object(rendering, "Console", return_value=console):
             cli.cmd_list(device, SimpleNamespace(detail=True))
 
         device.downloads.query_links.assert_called_once_with(
