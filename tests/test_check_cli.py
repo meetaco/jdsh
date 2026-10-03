@@ -73,7 +73,7 @@ class CheckCommandTests(unittest.TestCase):
         with patch.object(rendering, "Console", return_value=console), \
              patch.object(services.time, "monotonic", side_effect=[0.0, 0.1, 0.2, 0.3]), \
              patch.object(services.time, "sleep"):
-            cli.cmd_check(device, SimpleNamespace(id=123, as_json=False))
+            cli._execute(cli.cmd_check, device, SimpleNamespace(id=123, as_json=False))
 
         self.assertEqual(device.downloads.query_links.call_args_list, [
             call([self.check_query(123)]),
@@ -100,7 +100,7 @@ class CheckCommandTests(unittest.TestCase):
         with patch.object(services.time, "monotonic", side_effect=times), \
              patch.object(services.time, "sleep"), \
              patch("sys.stdout", new_callable=io.StringIO) as stdout:
-            cli.cmd_check(device, SimpleNamespace(id=123, as_json=True))
+            cli._execute(cli.cmd_check, device, SimpleNamespace(id=123, as_json=True))
 
         payload = json.loads(stdout.getvalue())
         self.assertEqual(payload["availableStatus"]["id"], "TRUE")
@@ -111,7 +111,7 @@ class CheckCommandTests(unittest.TestCase):
 
         with patch("sys.stderr", new_callable=io.StringIO) as stderr:
             with self.assertRaises(SystemExit) as ctx:
-                cli.cmd_check(device, SimpleNamespace(id=999, as_json=False))
+                cli._execute(cli.cmd_check, device, SimpleNamespace(id=999, as_json=False))
 
         self.assertEqual(ctx.exception.code, 1)
         self.assertIn("Download link ID not found: 999", stderr.getvalue())
@@ -124,7 +124,7 @@ class CheckCommandTests(unittest.TestCase):
 
         with patch("sys.stderr", new_callable=io.StringIO) as stderr:
             with self.assertRaises(SystemExit) as ctx:
-                cli.cmd_check(device, SimpleNamespace(id=123, as_json=False))
+                cli._execute(cli.cmd_check, device, SimpleNamespace(id=123, as_json=False))
 
         self.assertEqual(ctx.exception.code, 1)
         self.assertIn("Failed to start online status check", stderr.getvalue())
@@ -143,7 +143,7 @@ class CheckCommandTests(unittest.TestCase):
              patch.object(services.time, "sleep"), \
              patch("sys.stderr", new_callable=io.StringIO) as stderr:
             with self.assertRaises(SystemExit) as ctx:
-                cli.cmd_check(device, SimpleNamespace(id=123, as_json=False))
+                cli._execute(cli.cmd_check, device, SimpleNamespace(id=123, as_json=False))
 
         self.assertEqual(ctx.exception.code, 1)
         self.assertIn("timed out after 0.5s", stderr.getvalue())
@@ -158,7 +158,7 @@ class CheckCommandTests(unittest.TestCase):
 
         with patch.object(services.time, "sleep") as sleep, \
              patch("sys.stdout", new_callable=io.StringIO) as stdout:
-            cli.cmd_check(
+            cli._execute(cli.cmd_check,
                 device,
                 SimpleNamespace(id=None, all_links=True, as_json=False),
             )
@@ -177,7 +177,7 @@ class CheckCommandTests(unittest.TestCase):
         device.downloads.query_links.return_value = [{"uuid": 123}, {"uuid": 456}]
 
         with patch("sys.stdout", new_callable=io.StringIO) as stdout:
-            cli.cmd_check(
+            cli._execute(cli.cmd_check,
                 device,
                 SimpleNamespace(id=None, all_links=True, as_json=True),
             )
@@ -194,7 +194,7 @@ class CheckCommandTests(unittest.TestCase):
         device.downloads.query_links.return_value = []
 
         with patch("sys.stdout", new_callable=io.StringIO) as stdout:
-            cli.cmd_check(
+            cli._execute(cli.cmd_check,
                 device,
                 SimpleNamespace(id=None, all_links=True, as_json=False),
             )
@@ -208,7 +208,7 @@ class CheckCommandTests(unittest.TestCase):
 
         with patch("sys.stderr", new_callable=io.StringIO) as stderr:
             with self.assertRaises(SystemExit) as ctx:
-                cli.cmd_check(
+                cli._execute(cli.cmd_check,
                     device,
                     SimpleNamespace(id=None, all_links=True, as_json=False),
                 )
@@ -224,7 +224,7 @@ class CheckCommandTests(unittest.TestCase):
 
         with patch("sys.stderr", new_callable=io.StringIO) as stderr:
             with self.assertRaises(SystemExit) as ctx:
-                cli.cmd_check(
+                cli._execute(cli.cmd_check,
                     device,
                     SimpleNamespace(id=None, all_links=True, as_json=False),
                 )

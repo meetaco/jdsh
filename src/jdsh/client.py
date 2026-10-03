@@ -1,6 +1,6 @@
-import sys
 from myjdapi import Myjdapi
 from . import config
+from .errors import JDConnectionError, ServiceError, StatsError
 
 
 COMPACT_LINK_STATE_QUERY = {
@@ -109,20 +109,20 @@ def start_online_status_check(device, link_ids, package_ids=()):
 
 
 class JDClient:
-    def __init__(self):
-        self.api = Myjdapi()
+    def __init__(self, settings=None, api=None):
+        self.settings = config.Settings() if settings is None else settings
+        self.api = Myjdapi() if api is None else api
         self.api.set_app_key(config.APP_KEY)
         self.device = None
 
     def connect(self):
         try:
-            if not self.api.direct_connect(config.HOST, config.PORT):
-                raise ConnectionError(f"Failed to connect to {config.HOST}:{config.PORT}")
+            if not self.api.direct_connect(self.settings.host, self.settings.port):
+                raise ConnectionError(f"Failed to connect to {self.settings.host}:{self.settings.port}")
             self.device = self.api.get_device()
             return self.device
         except Exception as e:
-            print(f"Connection Error: {e}", file=sys.stderr)
-            sys.exit(1)
+            raise JDConnectionError(f"Connection Error: {e}") from e
 
     def fetch_stats(self):
         try:
@@ -143,11 +143,15 @@ class JDClient:
                     enabled_unfinished_links.append(link)
 
             return state, running_links, enabled_unfinished_links
-        except Exception:
-            return "ERROR", [], []
+        except Exception as e:
+            raise StatsError(f"Failed to fetch download status: {e}") from e
 
     def toggle_state(self, current_state):
-        if current_state in ["RUNNING", "DOWNLOADING"]:
-            self.device.downloadcontroller.stop_downloads()
-        else:
-            self.device.downloadcontroller.start_downloads()
+        action = "stop" if current_state in ["RUNNING", "DOWNLOADING"] else "start"
+        try:
+            if action == "stop":
+                self.device.downloadcontroller.stop_downloads()
+            else:
+                self.device.downloadcontroller.start_downloads()
+        except Exception as e:
+            raise ServiceError(f"Failed to {action} downloads: {e}") from e

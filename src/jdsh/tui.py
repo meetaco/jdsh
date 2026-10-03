@@ -21,7 +21,8 @@ from rich.progress_bar import ProgressBar
 from rich.text import Text
 from rich import box
 
-from . import utils, config
+from . import utils
+from .errors import ServiceError
 
 
 class KeyboardInput:
@@ -42,10 +43,7 @@ class KeyboardInput:
         
         elif msvcrt:
             if msvcrt.kbhit():
-                try:
-                    return msvcrt.getch().decode("utf-8", errors="ignore")
-                except:
-                    pass
+                return msvcrt.getch().decode("utf-8", errors="ignore")
         return None
 
 
@@ -162,6 +160,14 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
     return layout
 
 
+def _poll_stats(client):
+    try:
+        state, running, unfinished = client.fetch_stats()
+        return state, running, unfinished, None
+    except ServiceError as e:
+        return "ERROR", [], [], f"ERROR: {e}"
+
+
 def run(client):
     console = Console()
     console.clear()
@@ -171,14 +177,15 @@ def run(client):
         with KeyboardInput() as kbd, Live(refresh_per_second=4, screen=True) as live:
             live.update(generate_layout("CONNECTING...", [], [], override_status="LOADING..."))
             
-            last_state, last_running, last_enabled_unfinished = client.fetch_stats()
-            live.update(generate_layout(last_state, last_running, last_enabled_unfinished))
+            last_state, last_running, last_enabled_unfinished, error = _poll_stats(client)
+            live.update(generate_layout(last_state, last_running, last_enabled_unfinished, override_status=error))
 
             while True:
-                start_time = time.time()
-                while (time.time() - start_time) < config.REFRESH_RATE:
+                operation_error = None
+                start_time = time.monotonic()
+                while (time.monotonic() - start_time) < client.settings.refresh_rate:
                     key = kbd.get_key()
-                    if key == 's':
+                    if key == 's' and last_state != 'ERROR':
                         is_running = last_state in ["RUNNING", "DOWNLOADING"]
                         fb_status = "STOPPING..." if is_running else "STARTING..."
                         
@@ -189,18 +196,20 @@ def run(client):
                             override_status=fb_status,
                         ))
                         
-                        try: client.toggle_state(last_state)
-                        except: pass
+                        try:
+                            client.toggle_state(last_state)
+                        except ServiceError as e:
+                            operation_error = f"ERROR: {e}"
                         
                         break
                     
                     if key: pass 
                     time.sleep(0.1)
 
-                state, running, enabled_unfinished = client.fetch_stats()
+                state, running, enabled_unfinished, error = _poll_stats(client)
                 last_state, last_running, last_enabled_unfinished = state, running, enabled_unfinished
                 
-                live.update(generate_layout(state, running, enabled_unfinished))
+                live.update(generate_layout(state, running, enabled_unfinished, override_status=operation_error or error))
 
     except KeyboardInterrupt:
         pass

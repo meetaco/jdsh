@@ -79,7 +79,7 @@ class CmdAddTests(unittest.TestCase):
         args = cli._parse_args(["add", "-f", "links.txt"])
         reader = mock_open(read_data=" https://a.example \r\n\r\n  \nhttps://b.example\nhttps://a.example")
         with patch("builtins.open", reader):
-            cli.cmd_add(device, args)
+            cli._execute(cli.cmd_add, device, args)
         reader.assert_called_once_with("links.txt", encoding="utf-8-sig")
         device.linkgrabber.add_links.assert_called_once_with([{
             "links": "https://a.example,https://b.example",
@@ -93,7 +93,7 @@ class CmdAddTests(unittest.TestCase):
         with patch("builtins.open", mock_open(read_data="https://pos.example\nhttps://file.example\n")), patch.object(
             cli.clipboard, "read_clipboard_links", return_value=["https://file.example", "https://clip.example"]
         ):
-            cli.cmd_add(device, args)
+            cli._execute(cli.cmd_add, device, args)
         self.assertEqual(device.linkgrabber.add_links.call_args.args[0][0]["links"],
                          "https://pos.example,https://file.example,https://clip.example")
 
@@ -105,7 +105,7 @@ class CmdAddTests(unittest.TestCase):
                 args = cli._parse_args(["add", "https://pos.example", "--file", "links.txt"])
                 with patch("builtins.open", side_effect=error), patch("sys.stderr", new_callable=io.StringIO) as stderr:
                     with self.assertRaises(SystemExit) as ctx:
-                        cli.cmd_add(device, args)
+                        cli._execute(cli.cmd_add, device, args)
                 self.assertEqual(ctx.exception.code, 1)
                 self.assertIn("cannot read URL file 'links.txt'", stderr.getvalue())
                 device.linkgrabber.add_links.assert_not_called()
@@ -115,7 +115,7 @@ class CmdAddTests(unittest.TestCase):
         args = cli._parse_args(["add", "--file", "links.txt"])
         with patch("builtins.open", mock_open(read_data="\n  \n")), patch("sys.stderr", new_callable=io.StringIO) as stderr:
             with self.assertRaises(SystemExit) as ctx:
-                cli.cmd_add(device, args)
+                cli._execute(cli.cmd_add, device, args)
         self.assertEqual(ctx.exception.code, 1)
         self.assertIn("no URLs to add", stderr.getvalue())
         device.linkgrabber.add_links.assert_not_called()
@@ -128,7 +128,7 @@ class CmdAddTests(unittest.TestCase):
             "read_clipboard_links",
             return_value=["https://dup.example", "https://clip.example"],
         ):
-            cli.cmd_add(device, args)
+            cli._execute(cli.cmd_add, device, args)
 
         payload = device.linkgrabber.add_links.call_args.args[0][0]
         self.assertEqual(
@@ -139,7 +139,7 @@ class CmdAddTests(unittest.TestCase):
     def test_preserves_existing_positional_whitespace_normalization(self):
         device = MagicMock()
         args = SimpleNamespace(clipboard=False, urls=["https://a.example https://b.example"])
-        cli.cmd_add(device, args)
+        cli._execute(cli.cmd_add, device, args)
         payload = device.linkgrabber.add_links.call_args.args[0][0]
         self.assertEqual(payload["links"], "https://a.example,https://b.example")
 
@@ -152,7 +152,7 @@ class CmdAddTests(unittest.TestCase):
             side_effect=clipboard.ClipboardError("read failed"),
         ), patch("sys.stderr", new_callable=io.StringIO) as stderr:
             with self.assertRaises(SystemExit) as ctx:
-                cli.cmd_add(device, args)
+                cli._execute(cli.cmd_add, device, args)
 
         self.assertEqual(ctx.exception.code, 1)
         self.assertIn("Error: read failed", stderr.getvalue())
