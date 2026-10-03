@@ -12,6 +12,7 @@ from rich.text import Text
 from . import config, utils
 from .diagnostics import availability_label, diagnose_link
 
+# Presentation order only; API request fields are defined in client.py.
 LINK_DETAIL_FIELDS = (
     "uuid",
     "name",
@@ -52,6 +53,7 @@ PACKAGE_DETAIL_FIELDS = (
     "hosts",
     "comment",
 )
+
 
 def print_help():
     console = Console()

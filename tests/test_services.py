@@ -71,6 +71,72 @@ class DownloadServiceTests(unittest.TestCase):
         self.assertEqual(services.check_all_downloads(device), {"started": True, "linkCount": 2})
         device.action.assert_called_once_with("/downloadsV2/startOnlineStatusCheck", [[123, 456], []])
 
+    def test_explain_preserves_controller_state_and_raw_evidence(self):
+        device = MagicMock()
+        link = dict(self.link("TRUE"), enabled=True, running=False, finished=False)
+        device.downloads.query_links.return_value = [link]
+        device.downloadcontroller.get_current_state.return_value = "STOPPED"
+        payload = services.explain_download(device, 123)
+        self.assertEqual(payload["controllerState"], "STOPPED")
+        self.assertEqual(payload["diagnosis"]["source"], "inferred")
+        self.assertIs(payload["advancedStatus"], link["advancedStatus"])
+
+    def test_explain_controller_failure_preserves_link_diagnosis(self):
+        device = MagicMock()
+        device.downloads.query_links.return_value = [self.link("FALSE")]
+        device.downloadcontroller.get_current_state.side_effect = RuntimeError("unreachable")
+        payload = services.explain_download(device, 123)
+        self.assertIsNone(payload["controllerState"])
+        self.assertEqual(payload["diagnosis"]["state"], "OFFLINE")
+        self.assertEqual(payload["diagnosis"]["source"], "jdownloader")
+
+    def test_show_package_failure_preserves_exception_cause(self):
+        device = MagicMock()
+        device.downloads.query_links.return_value = [{"uuid": 123, "packageUUID": 456}]
+        error = RuntimeError("package unavailable")
+        device.downloads.query_packages.side_effect = error
+        with self.assertRaisesRegex(services.ShowError, "Failed to query parent package") as caught:
+            services.show_download(device, 123)
+        self.assertIs(caught.exception.__cause__, error)
+        device.action.assert_not_called()
+
+    def test_check_all_query_failure_does_not_submit_action(self):
+        device = MagicMock()
+        device.downloads.query_links.side_effect = RuntimeError("query failed")
+        with self.assertRaisesRegex(services.CheckError, "Failed to query download links"):
+            services.check_all_downloads(device)
+        device.action.assert_not_called()
+
+    def test_check_all_start_failure_is_service_error(self):
+        device = MagicMock()
+        device.downloads.query_links.return_value = [{"uuid": 123}]
+        error = RuntimeError("start failed")
+        device.action.side_effect = error
+        with self.assertRaisesRegex(services.CheckError, "Failed to start online status check") as caught:
+            services.check_all_downloads(device)
+        self.assertIs(caught.exception.__cause__, error)
+
+    def test_check_returns_after_unchecked_transitions_to_final_status(self):
+        device = MagicMock()
+        device.downloads.query_links.side_effect = [
+            [self.link("TRUE")], [self.link("UNCHECKED")], [self.link("FALSE")],
+        ]
+        moments = iter([0.0, 0.1, 0.2])
+        pauses = []
+        payload = services.check_download(device, 123, clock=lambda: next(moments), sleep=pauses.append)
+        self.assertEqual(payload["availableStatus"], {"id": "FALSE"})
+        self.assertEqual(pauses, [services.CHECK_POLL_INTERVAL_SECONDS])
+
+    def test_availability_rejects_malformed_state_and_preserves_raw_dict(self):
+        from jdsh.diagnostics import available_status
+
+        for link in (None, {}, {"advancedStatus": None}, {"advancedStatus": []},
+                     {"advancedStatus": {"AvailableStatus": "TRUE"}}):
+            with self.subTest(link=link):
+                self.assertIsNone(available_status(link))
+        status = {"id": "TRUE", "futureField": None}
+        self.assertIs(available_status({"advancedStatus": {"AvailableStatus": status}}), status)
+
 
 if __name__ == "__main__":
     unittest.main()

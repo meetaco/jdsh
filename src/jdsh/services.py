@@ -9,6 +9,7 @@ from .client import (
     get_download_urls,
     start_online_status_check,
 )
+# available_status preserves the former CLI helper: non-dict states return None.
 from .diagnostics import available_status, diagnose_link
 
 CHECK_TIMEOUT_SECONDS = 30.0
@@ -168,4 +169,3 @@ def explain_download(device, link_id):
         "advancedStatus": link.get("advancedStatus"),
         "extractionStatus": link.get("extractionStatus"),
     }
-
