@@ -119,7 +119,7 @@ def print_help():
     add_cmd("why", "<id> [--json]", "Explain why a download is not progressing")
     add_cmd("check", "<id> | --all [--json]", "Force-refresh link availability")
     add_cmd("grabber", "[-d]", "List pending links inside LinkGrabber")
-    add_cmd("add", "[<url>...] [--clipboard]", "Add links to LinkGrabber")
+    add_cmd("add", "[<url>...] [--clipboard] [-f <path>]", "Add links to LinkGrabber (file: one URL per line)")
     add_cmd("confirm", "", "Move all pending links to Queue")
     add_cmd("remove (rm)", "<uuid>...", "Remove items by ID")
 
@@ -591,6 +591,16 @@ def cmd_grabber(device, args):
 
 
 def cmd_add(device, args):
+    file_path = getattr(args, "file", None)
+    links = " ".join(args.urls).split()
+    if file_path is not None:
+        try:
+            with open(file_path, encoding="utf-8-sig") as url_file:
+                links.extend(line.strip() for line in url_file if line.strip())
+        except (OSError, UnicodeError) as e:
+            print(f"Error: cannot read URL file {file_path!r}: {e}", file=sys.stderr)
+            raise SystemExit(1)
+
     if args.clipboard:
         try:
             clipboard_links = clipboard.read_clipboard_links()
@@ -598,14 +608,14 @@ def cmd_add(device, args):
             print(f"Error: {e}", file=sys.stderr)
             raise SystemExit(1)
 
-        # Match the existing positional URL normalization when --clipboard is combined with URLs.
-        positional_links = " ".join(args.urls).split()
-        links = clipboard.dedupe_preserve_order(positional_links + clipboard_links)
-        link_str = ",".join(links)
-    else:
-        # Preserve the existing positional-URL behavior unchanged.
-        raw = " ".join(args.urls)
-        link_str = ",".join(raw.split())
+        links.extend(clipboard_links)
+
+    if file_path is not None or args.clipboard:
+        links = clipboard.dedupe_preserve_order(links)
+    if not links:
+        print("Error: no URLs to add", file=sys.stderr)
+        raise SystemExit(1)
+    link_str = ",".join(links)
 
     device.linkgrabber.add_links([{"links": link_str, "autostart": False, "priority": "DEFAULT"}])
     print(f"Added links to Grabber. Run 'jd confirm' to start.")
@@ -685,6 +695,7 @@ def _build_parser():
 
     p_add = sub.add_parser("add")
     p_add.add_argument("--clipboard", action="store_true", help="Add links from the macOS clipboard")
+    p_add.add_argument("-f", "--file", metavar="PATH", help="Read a UTF-8 text file containing one URL per line")
     p_add.add_argument("urls", nargs="*")
     
     p_rm = sub.add_parser("remove", aliases=["rm"])
@@ -697,18 +708,37 @@ def _build_parser():
 
 
 def _normalize_argv(argv):
-    """Move add's --clipboard option before positionals so argparse accepts any option order."""
+    """Move add's options before positionals, preserving option values and --."""
     argv = list(argv)
-    if argv and argv[0] == "add" and "--clipboard" in argv[1:]:
-        argv = ["add", "--clipboard"] + [arg for arg in argv[1:] if arg != "--clipboard"]
-    return argv
+    if not argv or argv[0] != "add":
+        return argv
+    options = []
+    positionals = []
+    index = 1
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--":
+            positionals.extend(argv[index:])
+            break
+        if arg in ("-f", "--file"):
+            if index + 1 >= len(argv) or argv[index + 1].startswith("-"):
+                return argv  # Let argparse report the missing option value.
+            options.append(arg)
+            index += 1
+            options.append(argv[index])
+        elif arg == "--clipboard" or arg.startswith("--file=") or arg.startswith("-f"):
+            options.append(arg)
+        else:
+            positionals.append(arg)
+        index += 1
+    return ["add"] + options + positionals
 
 
 def _parse_args(argv):
     parser = _build_parser()
     args = parser.parse_args(_normalize_argv(argv))
-    if args.command == "add" and not args.urls and not args.clipboard:
-        parser.error("jd add requires at least one URL or --clipboard")
+    if args.command == "add" and not args.urls and not args.clipboard and args.file is None:
+        parser.error("jd add requires at least one URL, --clipboard, or --file")
     if args.command == "check":
         if args.id is None and not args.all_links:
             parser.error("jd check requires <id> or --all")

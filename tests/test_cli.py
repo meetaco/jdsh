@@ -1,7 +1,7 @@
 import io
 import unittest
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 from jdsh import cli, clipboard
 from jdsh.client import (
@@ -38,8 +38,88 @@ class ParseArgsTests(unittest.TestCase):
             cli._parse_args(["add"])
         self.assertEqual(ctx.exception.code, 2)
 
+    def test_file_option_with_interspersed_urls(self):
+        for option in ("--file", "-f"):
+            for argv in (
+                ["add", option, "links list.txt", "URL1", "URL2"],
+                ["add", "URL1", option, "links list.txt", "URL2"],
+                ["add", "URL1", "URL2", option, "links list.txt"],
+            ):
+                with self.subTest(argv=argv):
+                    args = cli._parse_args(argv)
+                    self.assertEqual(args.file, "links list.txt")
+                    self.assertEqual(args.urls, ["URL1", "URL2"])
+
+    def test_file_without_positional_urls(self):
+        args = cli._parse_args(["add", "--file", "links.txt"])
+        self.assertEqual(args.file, "links.txt")
+        self.assertEqual(args.urls, [])
+
+    def test_file_combined_with_clipboard_and_urls(self):
+        args = cli._parse_args(["add", "URL1", "--file=links.txt", "--clipboard", "URL2"])
+        self.assertEqual(args.file, "links.txt")
+        self.assertTrue(args.clipboard)
+        self.assertEqual(args.urls, ["URL1", "URL2"])
+
+    def test_file_option_requires_path(self):
+        with patch("sys.stderr", new_callable=io.StringIO), self.assertRaises(SystemExit) as ctx:
+            cli._parse_args(["add", "URL1", "--file"])
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_option_terminator_preserves_literal_arguments(self):
+        args = cli._parse_args(["add", "--", "--clipboard", "--file"])
+        self.assertFalse(args.clipboard)
+        self.assertIsNone(args.file)
+        self.assertEqual(args.urls, ["--clipboard", "--file"])
+
 
 class CmdAddTests(unittest.TestCase):
+    def test_file_lines_trim_whitespace_ignore_blanks_and_dedupe(self):
+        device = MagicMock()
+        args = cli._parse_args(["add", "-f", "links.txt"])
+        reader = mock_open(read_data=" https://a.example \r\n\r\n  \nhttps://b.example\nhttps://a.example")
+        with patch("builtins.open", reader):
+            cli.cmd_add(device, args)
+        reader.assert_called_once_with("links.txt", encoding="utf-8-sig")
+        device.linkgrabber.add_links.assert_called_once_with([{
+            "links": "https://a.example,https://b.example",
+            "autostart": False,
+            "priority": "DEFAULT",
+        }])
+
+    def test_combines_all_sources_in_order(self):
+        device = MagicMock()
+        args = cli._parse_args(["add", "https://pos.example", "-f", "links.txt", "--clipboard"])
+        with patch("builtins.open", mock_open(read_data="https://pos.example\nhttps://file.example\n")), patch.object(
+            cli.clipboard, "read_clipboard_links", return_value=["https://file.example", "https://clip.example"]
+        ):
+            cli.cmd_add(device, args)
+        self.assertEqual(device.linkgrabber.add_links.call_args.args[0][0]["links"],
+                         "https://pos.example,https://file.example,https://clip.example")
+
+    def test_file_read_errors_prevent_submission(self):
+        for error in (FileNotFoundError("missing"), PermissionError("denied"),
+                      UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid byte")):
+            with self.subTest(error=error):
+                device = MagicMock()
+                args = cli._parse_args(["add", "https://pos.example", "--file", "links.txt"])
+                with patch("builtins.open", side_effect=error), patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                    with self.assertRaises(SystemExit) as ctx:
+                        cli.cmd_add(device, args)
+                self.assertEqual(ctx.exception.code, 1)
+                self.assertIn("cannot read URL file 'links.txt'", stderr.getvalue())
+                device.linkgrabber.add_links.assert_not_called()
+
+    def test_empty_file_prevents_empty_submission(self):
+        device = MagicMock()
+        args = cli._parse_args(["add", "--file", "links.txt"])
+        with patch("builtins.open", mock_open(read_data="\n  \n")), patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit) as ctx:
+                cli.cmd_add(device, args)
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn("no URLs to add", stderr.getvalue())
+        device.linkgrabber.add_links.assert_not_called()
+
     def test_combines_positional_and_clipboard_links_with_ordered_dedupe(self):
         device = MagicMock()
         args = SimpleNamespace(clipboard=True, urls=["https://pos.example", "https://dup.example"])
