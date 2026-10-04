@@ -95,6 +95,45 @@ jd
   jd show 123456789 --json
 ```
 
+### Browsing the download queue
+
+```bash
+jd ls --search archive
+jd ls --state waiting --host example.com
+jd ls --state running --state waiting --sort name
+jd ls --sort size --reverse
+jd ls -d --search archive
+jd ls --packages
+jd ls --packages --search archive --state waiting --sort progress --reverse
+```
+
+`list` and `ls` accept the same options. `--search` matches a case-insensitive
+substring of a link's name; with `--packages` it also matches package names.
+`--host` matches an exact host name, ignoring case. Repeat `--state` or `--host`
+to match any of the supplied values. Different filters are combined with AND.
+State names are the same diagnostic states shown by `jd ls` and `jd why`:
+`RUNNING`, `FINISHED`, `DISABLED`, `PROCESSING`, `WAITING`, `SKIPPED`, `FINAL`,
+`OFFLINE`, `STATUS`, and `UNKNOWN`; lowercase input is accepted. `WAITING` can
+include enabled idle links whose precise reason is unknown.
+
+`--sort` accepts `name`, `id`, `host`, `size` (total bytes), or `progress`
+(completed percentage). Sorting is ascending unless `--reverse` is supplied;
+`--reverse` requires `--sort`. Unknown values remain last in either direction,
+and equal values retain their original order. Unknown or zero total sizes give
+an unknown completion percentage. With no sorting option, the API order is kept.
+
+`--packages` displays package IDs and names, matched/total link counts, matched
+bytes downloaded/total bytes, diagnostic state counts, and hosts. Filters apply
+before aggregation: the sizes, states, hosts, and sorting keys describe only the
+matched links, while the total link count comes from the full link snapshot.
+A package with any unknown member size has an unknown aggregate size (`null`).
+Packages with no matching links are omitted, as are empty packages. Links with
+missing package IDs appear in an `UNKNOWN` ID group; missing package metadata
+keeps the actual ID and displays `Unknown package name`. Package metadata and
+links are separate API reads, so names may be unavailable if the queue changes
+between them. `--packages` cannot be combined with `-d`/`--detail`; use detailed
+link output to inspect the raw fields.
+
 `jd confirm` moves **all** pending LinkGrabber packages to the download queue. It does not explicitly start the download controller; use `jd start` to start or resume it. If the controller is already running, newly moved links may begin downloading.
 
 `jd show <id>` uses the numeric download-link ID shown by `jd ls`. It reports the raw download-link state, the parent package details when available, and separate `getDownloadUrls` responses for all five JDownloader URL display types: `CUSTOM`, `REFERRER`, `ORIGIN`, `CONTAINER`, and `CONTENT`. JDownloader selects only the first matching URL type within a single `getDownloadUrls` request, so JDSH queries each type separately. `--json` emits one object with `link`, `package`, and `downloadUrls`; the keys under `downloadUrls` are the requested URL types. If JDownloader's optional `UseUrlOrderForMyJD` setting is enabled, JDownloader may override the requested type with its configured URL order. The download-link password field is intentionally not requested by this diagnostic command.

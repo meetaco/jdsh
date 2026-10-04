@@ -3,6 +3,8 @@
 import argparse
 from typing import Sequence
 
+from .queue_view import LINK_STATES, SORT_KEYS
+
 
 def _build_parser():
     parser = argparse.ArgumentParser(prog="jd", add_help=False)
@@ -16,6 +18,12 @@ def _build_parser():
 
     p_ls = command("list", 'List downloads with availability and reason.', aliases=["ls"])
     p_ls.add_argument("-d", "--detail", action="store_true", help="Show detailed link information")
+    p_ls.add_argument("--search", metavar="TEXT", help="Case-insensitive name substring; package names also match in --packages view")
+    p_ls.add_argument("--state", action="append", type=str.upper, choices=LINK_STATES, default=[], help="Filter by diagnostic state; repeat to match any listed state")
+    p_ls.add_argument("--host", action="append", default=[], metavar="HOST", help="Case-insensitive exact host; repeat to match any listed host")
+    p_ls.add_argument("--sort", choices=SORT_KEYS, help="Sort ascending; unknown values stay last")
+    p_ls.add_argument("--reverse", action="store_true", help="Sort descending (requires --sort)")
+    p_ls.add_argument("--packages", action="store_true", help="Summarize matched links by package, including matched/total link counts")
 
     p_show = command("show", 'Show raw link, package, URL, and diagnosis details.')
     p_show.add_argument("id", type=int, help="Download link ID shown by jd ls")
@@ -99,6 +107,11 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     """
     parser = _build_parser()
     args = parser.parse_args(_normalize_argv(argv))
+    if args.command in ("list", "ls"):
+        if args.reverse and args.sort is None:
+            parser.error("--reverse requires --sort")
+        if args.packages and args.detail:
+            parser.error("--packages and --detail cannot be combined; use jd ls -d for raw link details")
     if args.command == "add" and not args.urls and not args.clipboard and args.file is None:
         parser.error("jd add requires at least one URL, --clipboard, or --file")
     if args.command == "check":

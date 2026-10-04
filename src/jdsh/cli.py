@@ -58,8 +58,20 @@ def cmd_why(device, args, *, console=None):
 
 
 def cmd_list(device, args, *, console=None):
-    links = services.list_downloads(device, detail=args.detail)
-    rendering.render_list(links, detail=args.detail, console=console)
+    options = {
+        "search": getattr(args, "search", None),
+        "states": getattr(args, "state", ()),
+        "hosts": getattr(args, "host", ()),
+        "sort": getattr(args, "sort", None),
+        "reverse": getattr(args, "reverse", False),
+    }
+    filtered = options["search"] is not None or bool(options["states"] or options["hosts"])
+    if getattr(args, "packages", False):
+        packages = services.list_download_packages(device, **options)
+        rendering.render_packages(packages, filtered=filtered, console=console)
+    else:
+        links = services.list_downloads(device, detail=args.detail, **options)
+        rendering.render_list(links, detail=args.detail, filtered=filtered, console=console)
 
 
 def cmd_grabber(device, args, *, console=None):
