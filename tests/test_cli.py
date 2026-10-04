@@ -91,7 +91,7 @@ class CmdAddTests(unittest.TestCase):
         device = MagicMock()
         args = cli._parse_args(["add", "https://pos.example", "-f", "links.txt", "--clipboard"])
         with patch("builtins.open", mock_open(read_data="https://pos.example\nhttps://file.example\n")), patch.object(
-            cli.clipboard, "read_clipboard_links", return_value=["https://file.example", "https://clip.example"]
+            clipboard, "read_clipboard_links", return_value=["https://file.example", "https://clip.example"]
         ):
             cli._execute(cli.cmd_add, device, args)
         self.assertEqual(device.linkgrabber.add_links.call_args.args[0][0]["links"],
@@ -124,7 +124,7 @@ class CmdAddTests(unittest.TestCase):
         device = MagicMock()
         args = SimpleNamespace(clipboard=True, urls=["https://pos.example", "https://dup.example"])
         with patch.object(
-            cli.clipboard,
+            clipboard,
             "read_clipboard_links",
             return_value=["https://dup.example", "https://clip.example"],
         ):
@@ -147,7 +147,7 @@ class CmdAddTests(unittest.TestCase):
         device = MagicMock()
         args = SimpleNamespace(clipboard=True, urls=[])
         with patch.object(
-            cli.clipboard,
+            clipboard,
             "read_clipboard_links",
             side_effect=clipboard.ClipboardError("read failed"),
         ), patch("sys.stderr", new_callable=io.StringIO) as stderr:

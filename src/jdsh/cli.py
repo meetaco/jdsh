@@ -5,7 +5,7 @@ import os
 from contextlib import contextmanager
 import sys
 
-from . import clipboard, config, rendering, services, tui
+from . import config, rendering, services, tui, url_inputs
 from .errors import JDShError
 from .client import JDClient
 
@@ -69,22 +69,11 @@ def cmd_grabber(device, args, *, console=None):
 
 
 def cmd_add(device, args, *, console=None):
-    file_path = getattr(args, "file", None)
-    links = " ".join(args.urls).split()
-    if file_path is not None:
-        try:
-            with open(file_path, encoding="utf-8-sig") as url_file:
-                links.extend(line.strip() for line in url_file if line.strip())
-        except (OSError, UnicodeError) as e:
-            raise JDShError(f"cannot read URL file {file_path!r}: {e}") from e
-
-    if args.clipboard:
-        links.extend(clipboard.read_clipboard_links())
-
-    if file_path is not None or args.clipboard:
-        links = clipboard.dedupe_preserve_order(links)
-    if not links:
-        raise JDShError("no URLs to add")
+    links = url_inputs.collect_links(
+        args.urls,
+        file_path=getattr(args, "file", None),
+        use_clipboard=args.clipboard,
+    )
     services.add_to_grabber(device, links)
     rendering.render_message("Added links to Grabber. Run 'jd confirm' to start.", console=console)
 
