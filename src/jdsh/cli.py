@@ -7,11 +7,7 @@ import sys
 
 from . import clipboard, config, rendering, services, tui
 from .errors import JDShError
-from .client import (
-    DOWNLOAD_LINK_STATE_QUERY,
-    JDClient,
-    LIST_LINK_STATE_QUERY,
-)
+from .client import JDClient
 
 
 def print_help(*, console=None):
@@ -19,11 +15,7 @@ def print_help(*, console=None):
 
 
 def cmd_status(device, args, *, console=None):
-    state = device.downloadcontroller.get_current_state()
-    links = device.downloads.query_links([{
-        "name": True, "bytesLoaded": True, "bytesTotal": True,
-        "speed": True, "running": True, "eta": True, "status": True, "finished": True,
-    }])
+    state, links = services.download_status(device)
     rendering.render_status(state, links, console=console)
 
 
@@ -67,13 +59,12 @@ def cmd_why(device, args, *, console=None):
 
 
 def cmd_list(device, args, *, console=None):
-    query = DOWNLOAD_LINK_STATE_QUERY if args.detail else LIST_LINK_STATE_QUERY
-    links = device.downloads.query_links([query.copy()])
+    links = services.list_downloads(device, detail=args.detail)
     rendering.render_list(links, detail=args.detail, console=console)
 
 
 def cmd_grabber(device, args, *, console=None):
-    links = device.linkgrabber.query_links([{"name": True, "uuid": True, "url": True}])
+    links = services.list_grabber_links(device)
     rendering.render_grabber(links, detail=args.detail, console=console)
 
 
@@ -94,23 +85,20 @@ def cmd_add(device, args, *, console=None):
         links = clipboard.dedupe_preserve_order(links)
     if not links:
         raise JDShError("no URLs to add")
-    link_str = ",".join(links)
-
-    device.linkgrabber.add_links([{"links": link_str, "autostart": False, "priority": "DEFAULT"}])
+    services.add_to_grabber(device, links)
     rendering.render_message("Added links to Grabber. Run 'jd confirm' to start.", console=console)
 
 
 def cmd_confirm(device, _, *, console=None):
-    pkgs = device.linkgrabber.query_packages([{"uuid": True}])
-    if not pkgs:
+    count = services.confirm_grabber(device)
+    if not count:
         rendering.render_message("No pending packages.", console=console)
         return
-    device.linkgrabber.move_to_downloadlist([], [p['uuid'] for p in pkgs])
-    rendering.render_message(f"Confirmed {len(pkgs)} packages.", console=console)
+    rendering.render_message(f"Confirmed {count} packages.", console=console)
 
 
 def cmd_remove(device, args, *, console=None):
-    device.downloads.remove_links(args.uuids, [])
+    services.remove_downloads(device, args.uuids)
     rendering.render_message(f"Removed {len(args.uuids)} items.", console=console)
 
 
@@ -121,18 +109,18 @@ def cmd_replace(device, args, *, console=None):
 
 def cmd_simple(device, args, *, console=None):
     cmds = {
-        'start': device.downloadcontroller.start_downloads,
-        'stop': device.downloadcontroller.stop_downloads,
-        'clear': lambda: device.downloads.cleanup("DELETE_FINISHED", "REMOVE_LINKS_ONLY", "ALL", [], [])
+        'start': services.start_downloads,
+        'stop': services.stop_downloads,
+        'clear': services.clear_finished_downloads
     }
-    cmds[args.command]()
+    cmds[args.command](device)
     rendering.render_message(f"Command executed: {args.command}", console=console)
 
 
 def cmd_version(device, args, *, console=None):
     rendering.render_message(f"JDSH v{config.VERSION}", console=console)
     try:
-        revision = device.action('/jd/getCoreRevision', [])
+        revision = services.core_revision(device)
     except Exception:
         logging.getLogger(__name__).debug("Core version unavailable", exc_info=True)
         revision = "Unknown"

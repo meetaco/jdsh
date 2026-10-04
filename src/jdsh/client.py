@@ -1,3 +1,5 @@
+from types import MappingProxyType
+
 from myjdapi import Myjdapi
 from . import config
 from .stats import partition_links
@@ -66,6 +68,24 @@ DOWNLOAD_PACKAGE_STATE_QUERY = {
 
 # Keep the same order as JDownloader's UrlDisplayType enum.
 DOWNLOAD_URL_DISPLAY_TYPES = ("CUSTOM", "REFERRER", "ORIGIN", "CONTAINER", "CONTENT")
+
+# Static status needs completion flags, without the TUI's queued-link selection.
+STATUS_LINK_STATE_QUERY = MappingProxyType({
+    "name": True,
+    "bytesLoaded": True,
+    "bytesTotal": True,
+    "speed": True,
+    "running": True,
+    "eta": True,
+    "status": True,
+    "finished": True,
+})
+
+GRABBER_LINK_STATE_QUERY = MappingProxyType({
+    "name": True,
+    "uuid": True,
+    "url": True,
+})
 
 # Keep the high-frequency TUI poll limited to fields it actually renders.
 # Diagnostic-only fields such as advancedStatus remain available to `jd ls -d`
