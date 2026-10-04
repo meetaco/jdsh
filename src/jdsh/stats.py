@@ -1,10 +1,16 @@
-"""Pure transfer calculations; raw API dictionaries remain untouched."""
+"""Pure transfer calculations without presentation dependencies; raw API dictionaries remain untouched."""
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import List, Optional, Tuple, Union
 
 Number = Union[int, float]
+PartitionResult = Tuple[List[dict], List[dict]]
+
+__all__ = [
+    "Number", "PartitionResult", "known_nonnegative", "TransferProgress",
+    "TransferSummary", "transfer_progress", "summarize_transfers", "partition_links",
+]
 
 
 def known_nonnegative(value) -> Optional[Number]:
@@ -27,7 +33,10 @@ class TransferProgress:
     def percent(self) -> Optional[float]:
         if self.loaded is None or self.total is None or self.total == 0:
             return None
-        return 100.0 if self.loaded >= self.total else self.loaded / self.total * 100.0
+        if self.loaded >= self.total:
+            return 100.0
+        # Float division may round near-complete large byte counts up to 100.
+        return min(99.99999999999999, self.loaded / self.total * 100.0)
 
     @property
     def remaining(self) -> Optional[Number]:
@@ -37,8 +46,12 @@ class TransferProgress:
 
 
 def transfer_progress(link) -> TransferProgress:
-    return TransferProgress(*(known_nonnegative(link.get(key)) for key in
-                              ("bytesLoaded", "bytesTotal", "speed", "eta")))
+    return TransferProgress(
+        loaded=known_nonnegative(link.get("bytesLoaded")),
+        total=known_nonnegative(link.get("bytesTotal")),
+        speed=known_nonnegative(link.get("speed")),
+        eta=known_nonnegative(link.get("eta")),
+    )
 
 
 @dataclass(frozen=True)
@@ -57,11 +70,15 @@ def _complete_sum(values) -> Optional[Number]:
 def summarize_transfers(links) -> TransferSummary:
     """Unknown values make their aggregate unknown, rather than a partial total."""
     progress = [transfer_progress(link) for link in links]
-    return TransferSummary(*(_complete_sum(getattr(item, field) for item in progress)
-                             for field in ("speed", "loaded", "total", "remaining")))
+    return TransferSummary(
+        speed=_complete_sum(item.speed for item in progress),
+        loaded=_complete_sum(item.loaded for item in progress),
+        total=_complete_sum(item.total for item in progress),
+        remaining=_complete_sum(item.remaining for item in progress),
+    )
 
 
-def partition_links(links):
+def partition_links(links) -> PartitionResult:
     """Preserve API flags and original dictionaries; finished links are excluded."""
     running, unfinished = [], []
     for link in links:

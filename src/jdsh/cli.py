@@ -22,7 +22,7 @@ def cmd_status(device, args, *, console=None):
     state = device.downloadcontroller.get_current_state()
     links = device.downloads.query_links([{
         "name": True, "bytesLoaded": True, "bytesTotal": True,
-        "speed": True, "running": True, "eta": True, "status": True,
+        "speed": True, "running": True, "eta": True, "status": True, "finished": True,
     }])
     rendering.render_status(state, links, console=console)
 
@@ -102,7 +102,9 @@ def cmd_add(device, args, *, console=None):
 
 def cmd_confirm(device, _, *, console=None):
     pkgs = device.linkgrabber.query_packages([{"uuid": True}])
-    if not pkgs: return rendering.render_message("No pending packages.", console=console)
+    if not pkgs:
+        rendering.render_message("No pending packages.", console=console)
+        return
     device.linkgrabber.move_to_downloadlist([], [p['uuid'] for p in pkgs])
     rendering.render_message(f"Confirmed {len(pkgs)} packages.", console=console)
 
@@ -130,10 +132,11 @@ def cmd_simple(device, args, *, console=None):
 def cmd_version(device, args, *, console=None):
     rendering.render_message(f"JDSH v{config.VERSION}", console=console)
     try:
-        rendering.render_message(f"JD Core: {device.action('/jd/getCoreRevision', [])}", console=console)
+        revision = device.action('/jd/getCoreRevision', [])
     except Exception:
         logging.getLogger(__name__).debug("Core version unavailable", exc_info=True)
-        rendering.render_message("JD Core: Unknown", console=console)
+        revision = "Unknown"
+    rendering.render_message(f"JD Core: {revision}", console=console)
 
 
 def _build_parser():

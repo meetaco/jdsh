@@ -76,3 +76,18 @@ class TransferStatsTests(unittest.TestCase):
         self.assertIs(running[0], links[0])
         self.assertIs(unfinished[0], links[1])
         self.assertEqual(links, original)
+
+    def test_near_complete_progress_does_not_round_to_complete(self):
+        for loaded, total in [(9996, 10000), (2**64 - 2, 2**64 - 1)]:
+            with self.subTest(loaded=loaded):
+                progress = stats.transfer_progress(self.link(bytesLoaded=loaded, bytesTotal=total))
+                self.assertLess(progress.percent, 100)
+                self.assertEqual(utils.human_percent(progress.percent), '99%')
+                self.assertEqual(utils.human_percent(progress.percent, precision=1), '99.9%')
+        self.assertEqual(utils.human_percent(100, precision=1), '100.0%')
+        self.assertEqual(utils.human_percent(12.345, precision=2), '12.35%')
+        self.assertEqual(utils.human_percent(None), '-')
+
+    def test_zero_eta_keeps_existing_unavailable_display(self):
+        self.assertEqual(utils.human_eta(0), '-')
+        self.assertEqual(utils.human_size(0), '0 B')

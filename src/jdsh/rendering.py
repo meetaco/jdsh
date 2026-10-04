@@ -188,7 +188,7 @@ def render_show(payload, link_id, *, console=None):
     console = Console() if console is None else console
     console.print(Panel(
         _raw_detail_text(payload["link"]),
-        title=f"Link: {payload['link'].get('name') or link_id}",
+        title=Text(f"Link: {payload['link'].get('name') or link_id}"),
         border_style="dim white",
         expand=False,
     ))
@@ -222,7 +222,7 @@ def render_why(payload, *, console=None):
     table.add_column("Field", style="bold")
     table.add_column("Value")
     table.add_row("ID", str(payload["uuid"]))
-    table.add_row("Name", payload.get("name") or "null")
+    table.add_row("Name", Text(str(payload.get("name") or "null")))
     table.add_row("State", str(diagnosis["state"]))
     table.add_row("Availability", availability_label({"advancedStatus": payload.get("advancedStatus")}))
     table.add_row("Reason", str(diagnosis["reason"]))
@@ -251,7 +251,7 @@ def render_check(payload, *, console=None):
     table.add_column("Field", style="bold")
     table.add_column("Value")
     table.add_row("ID", str(payload.get("uuid")))
-    table.add_row("Name", payload.get("name") or "null")
+    table.add_row("Name", Text(str(payload.get("name") or "null")))
     table.add_row("Availability", availability)
     console.print(table)
 
@@ -259,13 +259,13 @@ def render_check(payload, *, console=None):
 def render_list(links, detail=False, *, console=None):
     console = Console() if console is None else console
     if not links:
-        console.print("Download queue is empty.")
+        render_message("Download queue is empty.", console=console)
         return
     if detail:
         for link in links:
             panel = Panel(
                 _raw_detail_text(link),
-                title=link['name'],
+                title=Text(str(link['name'])),
                 border_style="dim white",
                 expand=False
             )
@@ -291,7 +291,7 @@ def render_list(links, detail=False, *, console=None):
                 size_fmt,
                 _raw_value(link.get("host")),
                 str(diagnosis["reason"]),
-                link['name'],
+                Text(str(link['name'])),
             )
         console.print(table)
 
@@ -299,7 +299,7 @@ def render_list(links, detail=False, *, console=None):
 def render_grabber(links, detail=False, *, console=None):
     console = Console() if console is None else console
     if not links:
-        console.print("LinkGrabber is empty.")
+        render_message("LinkGrabber is empty.", console=console)
         return
     table = Table(title=f"Pending Links ({len(links)})", box=box.SIMPLE)
     table.add_column("ID", style="dim")
@@ -307,7 +307,7 @@ def render_grabber(links, detail=False, *, console=None):
     if detail: table.add_column("URL", style="blue")
 
     for l in links:
-        row = [str(l['uuid']), l['name']]
+        row = [str(l['uuid']), Text(str(l['name']))]
         if detail: row.append(l.get('url', ''))
         table.add_row(*row)
 
@@ -337,7 +337,7 @@ def render_status(state, links, *, console=None):
             size_str = f"{utils.human_size(progress.loaded)}/{utils.human_size(progress.total)}"
 
             table.add_row(
-                l['name'],
+                Text(str(l['name'])),
                 utils.human_percent(progress.percent, precision=1),
                 size_str,
                 f"{utils.human_size(progress.speed)}/s",
@@ -349,12 +349,12 @@ def render_status(state, links, *, console=None):
 def render_check_all(payload, *, console=None):
     console = Console() if console is None else console
     if payload["started"]:
-        console.print(
+        render_message(
             f"Started online status check for {payload['linkCount']} links. "
-            "JDownloader will process them in the background."
+            "JDownloader will process them in the background.", console=console,
         )
     else:
-        console.print("No download links to check.")
+        render_message("No download links to check.", console=console)
 
 
 def render_message(message, *, console=None):

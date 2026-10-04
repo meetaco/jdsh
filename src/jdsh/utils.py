@@ -16,6 +16,7 @@ def human_size(bytes_val: Optional[Number]) -> str:
     return f"{bytes_val:.2f} TB"
 
 def human_eta(seconds: Optional[Number]) -> str:
+    """Preserve the existing dash for zero or unknown ETA; bytes retain zero."""
     seconds = known_nonnegative(seconds)
     if seconds is None or seconds == 0:
         return "-"
@@ -28,5 +29,9 @@ def human_eta(seconds: Optional[Number]) -> str:
     return f"{s}s"
 
 
-def human_percent(percent, precision=0):
-    return "-" if percent is None else f"{percent:.{precision}f}%"
+def human_percent(percent: Optional[float], precision: int = 0) -> str:
+    if percent is None:
+        return "-"
+    if percent < 100:
+        percent = min(percent, 100 - 10 ** -precision)
+    return f"{percent:.{precision}f}%"

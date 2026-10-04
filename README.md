@@ -101,14 +101,18 @@ On macOS, `jd add --clipboard` reads the clipboard's `public.html` representatio
 CLI and TUI use the same size, speed and progress calculations. Unknown values
 (missing, null or negative API sentinel values) are displayed as `null`; a known
 zero size remains `0 B`. A percentage that cannot be calculated is shown as `-`,
-including zero-byte totals. Displayed percentages are capped at 100%, while raw
+including zero-byte totals. Rounding keeps incomplete transfers below 100% at the selected display precision.
+Displayed percentages are capped at 100%, while raw
 loaded/total values remain available in detailed and JSON output.
 
 Running totals are unknown when any selected running link has an unknown value
 for that field; they do not silently show partial totals. An empty running
 selection has zero totals. Remaining bytes are calculated per link before
 summing so one link's excess loaded bytes cannot cancel another link's remaining
-bytes. Finished links are excluded from running/enabled-unfinished summaries.
+bytes. The loaded sum retains raw counts, so it can exceed the total when the
+API reports an overrun; loaded + remaining need not equal total. Zero or unknown
+ETA retains the existing `-` display (the zero-preservation rule applies to
+sizes and speeds). Finished links are excluded from running/enabled-unfinished summaries.
 
 ## Errors
 

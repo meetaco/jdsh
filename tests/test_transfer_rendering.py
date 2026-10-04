@@ -109,3 +109,76 @@ class TransferRenderingTests(unittest.TestCase):
             keyboard.return_value.__enter__.return_value.get_key.side_effect = KeyboardInterrupt
             tui.run(client, console=console)
         live.assert_called_once_with(console=console, refresh_per_second=4, screen=True)
+
+    def test_status_requests_finished_and_excludes_finished_running_link(self):
+        device = MagicMock()
+        device.downloadcontroller.get_current_state.return_value = 'RUNNING'
+        links = [self.link(finished=False), self.link(name='finished.zip', finished=True, speed=999)]
+
+        def query(queries):
+            # Simulate the API returning only the requested fields.
+            return [{key: value for key, value in link.items() if queries[0].get(key)} for link in links]
+
+        device.downloads.query_links.side_effect = query
+        output = io.StringIO()
+        cli.cmd_status(device, None, console=self.console(output))
+        self.assertIs(device.downloads.query_links.call_args.args[0][0]['finished'], True)
+        self.assertRegex(output.getvalue(), r'Active:\s+1')
+        self.assertIn('256.00 B/s', output.getvalue())
+        self.assertNotIn('finished.zip', output.getvalue())
+
+    def test_mixed_unknown_speed_is_not_displayed_as_partial_total(self):
+        links = [self.link(name='known.zip'), self.link(name='unknown.zip', speed=None)]
+        cli_output, tui_output = io.StringIO(), io.StringIO()
+        rendering.render_status('RUNNING', links, console=self.console(cli_output))
+        self.console(tui_output).print(tui.generate_layout('RUNNING', links, []))
+        for output in (cli_output.getvalue(), tui_output.getvalue()):
+            self.assertRegex(output, r'Speed:\s+null/s')
+            self.assertIn('256.00 B/s', output)
+
+    def test_near_complete_percentage_is_not_displayed_as_one_hundred(self):
+        link = self.link(bytesLoaded=9996, bytesTotal=10000)
+        cli_output, tui_output = io.StringIO(), io.StringIO()
+        rendering.render_status('RUNNING', [link], console=self.console(cli_output))
+        self.console(tui_output).print(tui.generate_layout('RUNNING', [link], []))
+        self.assertIn('99.9%', cli_output.getvalue())
+        self.assertIn('99%', tui_output.getvalue())
+        self.assertNotIn('100%', tui_output.getvalue())
+
+    def test_command_messages_remain_literal_without_numeric_highlighting(self):
+        output = io.StringIO()
+        console = Console(file=output, force_terminal=True, width=240)
+        rendering.render_check_all({'started': True, 'linkCount': 151}, console=console)
+        rendering.render_check_all({'started': False}, console=console)
+        rendering.render_list([], console=console)
+        rendering.render_grabber([], console=console)
+        self.assertIn('151 links', output.getvalue())
+        self.assertNotIn('\x1b', output.getvalue())
+
+    def test_names_with_markup_are_rendered_literally_in_cli_and_tui(self):
+        link = self.link(name='[red]file[/red].zip')
+        outputs = []
+        for render in (rendering.render_status, rendering.render_list, rendering.render_grabber):
+            stream = io.StringIO()
+            if render is rendering.render_status:
+                render('RUNNING', [link], console=self.console(stream))
+            else:
+                render([link], console=self.console(stream))
+            outputs.append(stream.getvalue())
+        stream = io.StringIO()
+        self.console(stream).print(tui.generate_layout('RUNNING', [link], []))
+        outputs.append(stream.getvalue())
+        for output in outputs:
+            self.assertIn(link['name'], output)
+
+    def test_version_rendering_failure_is_not_treated_as_unknown_core(self):
+        device = MagicMock()
+        device.action.return_value = 42
+        with patch.object(rendering, 'render_message', side_effect=[None, RuntimeError('render denied')]) as render, \
+             patch('sys.stderr', new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit) as caught:
+                cli._execute(cli.cmd_version, device, None)
+        self.assertEqual(caught.exception.code, 1)
+        self.assertIn('render denied', stderr.getvalue())
+        self.assertEqual(render.call_count, 2)
+        self.assertEqual(render.call_args.args[0], 'JD Core: 42')

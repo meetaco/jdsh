@@ -109,14 +109,14 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
     else:
         for link in running_links:
             progress = transfer_progress(link)
-            bar = "-" if progress.percent is None else ProgressBar(
+            bar = Text("-", justify="center") if progress.percent is None else ProgressBar(
                 total=100, completed=progress.percent, width=None, style="grey23",
                 complete_style="bold bright_cyan", finished_style="bold bright_green",
             )
             size_str = f"{utils.human_size(progress.loaded)}/{utils.human_size(progress.total)}"
 
             t_running.add_row(
-                link['name'], 
+                Text(str(link['name'])),
                 bar, 
                 utils.human_percent(progress.percent), 
                 size_str,
@@ -139,7 +139,7 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
         for link in enabled_unfinished_links[:limit]:
             status = link.get('status')
             t_enabled.add_row(
-                link['name'],
+                Text(str(link['name'])),
                 "null" if status is None else str(status),
                 utils.human_size(link.get('bytesTotal'))
             )
