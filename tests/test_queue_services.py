@@ -9,7 +9,10 @@ from unittest.mock import MagicMock, call, patch
 from rich.console import Console
 
 from jdsh import cli, config, services
-from jdsh.client import DOWNLOAD_LINK_STATE_QUERY, LIST_LINK_STATE_QUERY, STATUS_LINK_STATE_QUERY
+from jdsh.client import (
+    DOWNLOAD_LINK_STATE_QUERY, GRABBER_LINK_STATE_QUERY,
+    LIST_LINK_STATE_QUERY, STATUS_LINK_STATE_QUERY,
+)
 
 
 class QueueServiceTests(unittest.TestCase):
@@ -38,7 +41,7 @@ class QueueServiceTests(unittest.TestCase):
         ):
             with self.subTest(operation=operation.__name__, kwargs=kwargs):
                 device = MagicMock()
-                expected = deepcopy(fields)
+                expected = dict(fields)
                 requests = []
 
                 def query(payload):
@@ -51,6 +54,27 @@ class QueueServiceTests(unittest.TestCase):
                 operation(device, **kwargs)
                 self.assertEqual(fields, expected)
                 self.assertEqual(requests, [[expected], [expected]])
+
+    def test_new_query_definitions_cannot_be_mutated(self):
+        for fields in (STATUS_LINK_STATE_QUERY, GRABBER_LINK_STATE_QUERY):
+            with self.subTest(fields=fields):
+                with self.assertRaises(TypeError):
+                    fields["name"] = False
+                self.assertIs(fields["name"], True)
+
+    def test_grabber_query_mutation_does_not_leak_to_later_requests(self):
+        device = MagicMock()
+        requests = []
+
+        def query(payload):
+            requests.append(deepcopy(payload))
+            payload[0]["url"] = False
+            return []
+
+        device.linkgrabber.query_links.side_effect = query
+        services.list_grabber_links(device)
+        services.list_grabber_links(device)
+        self.assertEqual(requests, [[dict(GRABBER_LINK_STATE_QUERY)]] * 2)
 
     def test_grabber_preserves_raw_fields(self):
         device = MagicMock()
@@ -152,6 +176,15 @@ class QueueCommandFailureTests(unittest.TestCase):
                 failing_call.assert_called_once()
                 if method == "query_packages":
                     device.linkgrabber.move_to_downloadlist.assert_not_called()
+
+    def test_simple_command_needs_only_selected_controller_method(self):
+        from types import SimpleNamespace
+        device = SimpleNamespace(downloadcontroller=SimpleNamespace(start_downloads=MagicMock()))
+        output = io.StringIO()
+        cli.cmd_simple(device, SimpleNamespace(command="start"),
+                       console=Console(file=output, force_terminal=False))
+        device.downloadcontroller.start_downloads.assert_called_once_with()
+        self.assertIn("Command executed: start", output.getvalue())
 
     def test_unavailable_core_revision_keeps_version_fallback(self):
         device = MagicMock()
