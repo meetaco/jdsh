@@ -23,6 +23,7 @@ from rich.text import Text
 from rich import box
 
 from . import utils
+from .stats import summarize_transfers, transfer_progress
 from .errors import ServiceError
 
 
@@ -53,12 +54,8 @@ class KeyboardInput:
 
 
 def generate_layout(state, running_links, enabled_unfinished_links, override_status=None):
-    current_speed = sum(l.get('speed', 0) for l in running_links)
-    
-    total_bytes = sum(l.get('bytesTotal', 0) for l in running_links)
-    loaded_bytes = sum(l.get('bytesLoaded', 0) for l in running_links)
-    remaining_bytes = total_bytes - loaded_bytes
-    
+    summary = summarize_transfers(running_links)
+
     # Header
     grid = Table.grid(expand=True)
     grid.add_column(ratio=1)
@@ -82,8 +79,8 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
     state_text.overflow = "ellipsis"
     grid.add_row(
         state_text,
-        Text.assemble("Speed: ", (f"{utils.human_size(current_speed)}/s", "bold cyan")),
-        f"[dim]Running total:[/dim] {utils.human_size(total_bytes)}",
+        Text.assemble("Speed: ", (f"{utils.human_size(summary.speed)}/s", "bold cyan")),
+        f"[dim]Running total:[/dim] {utils.human_size(summary.total)}",
     )
     grid.add_row(
         Text.assemble(
@@ -92,8 +89,8 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
             "  |  Enabled unfinished: ",
             (str(len(enabled_unfinished_links)), "dim white"),
         ),
-        f"[dim]Running done: [/dim] {utils.human_size(loaded_bytes)}",
-        f"[dim]Running left: [/dim] [yellow]{utils.human_size(remaining_bytes)}[/]"
+        f"[dim]Running done: [/dim] {utils.human_size(summary.loaded)}",
+        f"[dim]Running left: [/dim] [yellow]{utils.human_size(summary.remaining)}[/]"
     )
 
     header = Panel(grid, title="JDownloader Panel", border_style=border_color, box=box.ROUNDED)
@@ -111,24 +108,20 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
         t_running.add_row("[dim italic]No running links[/]", "", "", "", "-", "-")
     else:
         for link in running_links:
-            total = link.get('bytesTotal', 1) or 1
-            done = link.get('bytesLoaded', 0)
-            pct = (done / total) * 100
-            
-            bar = ProgressBar(
-                total=100, completed=pct, width=None, style="grey23", 
-                complete_style="bold bright_cyan", finished_style="bold bright_green"
+            progress = transfer_progress(link)
+            bar = Text("-", justify="center") if progress.percent is None else ProgressBar(
+                total=100, completed=progress.percent, width=None, style="grey23",
+                complete_style="bold bright_cyan", finished_style="bold bright_green",
             )
-            
-            size_str = f"{utils.human_size(done)}/{utils.human_size(total)}"
-            
+            size_str = f"{utils.human_size(progress.loaded)}/{utils.human_size(progress.total)}"
+
             t_running.add_row(
-                link['name'], 
+                Text(str(link['name'])),
                 bar, 
-                f"{pct:.0f}%", 
+                utils.human_percent(progress.percent), 
                 size_str,
-                f"{utils.human_size(link.get('speed', 0))}/s", 
-                utils.human_eta(link.get('eta', 0))
+                f"{utils.human_size(progress.speed)}/s", 
+                utils.human_eta(progress.eta)
             )
 
     panel_running = Panel(t_running, title="Running Links", border_style="white", box=box.ROUNDED)
@@ -146,9 +139,9 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
         for link in enabled_unfinished_links[:limit]:
             status = link.get('status')
             t_enabled.add_row(
-                link['name'],
+                Text(str(link['name'])),
                 "null" if status is None else str(status),
-                utils.human_size(link.get('bytesTotal', 0))
+                utils.human_size(link.get('bytesTotal'))
             )
         if len(enabled_unfinished_links) > limit:
             t_enabled.add_row(f"[italic]...and {len(enabled_unfinished_links)-limit} more[/]", "", "")
@@ -177,13 +170,13 @@ def _poll_stats(client):
         return "ERROR", [], [], f"ERROR: {e}"
 
 
-def run(client):
-    console = Console()
+def run(client, *, console=None):
+    console = Console() if console is None else console
     console.clear()
     last_state, last_running, last_enabled_unfinished = "UNKNOWN", [], []
 
     try:
-        with KeyboardInput() as kbd, Live(refresh_per_second=4, screen=True) as live:
+        with KeyboardInput() as kbd, Live(console=console, refresh_per_second=4, screen=True) as live:
             live.update(generate_layout("CONNECTING...", [], [], override_status="LOADING..."))
             
             last_state, last_running, last_enabled_unfinished, error = _poll_stats(client)

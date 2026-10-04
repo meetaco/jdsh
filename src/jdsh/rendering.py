@@ -10,6 +10,7 @@ from rich.table import Table
 from rich.text import Text
 
 from . import config, utils
+from .stats import partition_links, summarize_transfers, transfer_progress
 from .diagnostics import availability_label, diagnose_link
 
 # Presentation order only; API request fields are defined in client.py.
@@ -55,8 +56,8 @@ PACKAGE_DETAIL_FIELDS = (
 )
 
 
-def print_help():
-    console = Console()
+def print_help(*, console=None):
+    console = Console() if console is None else console
 
     # Header
     title = Text.assemble(
@@ -183,11 +184,11 @@ def _diagnosis_text(diagnosis):
     return text
 
 
-def render_show(payload, link_id):
-    console = Console()
+def render_show(payload, link_id, *, console=None):
+    console = Console() if console is None else console
     console.print(Panel(
         _raw_detail_text(payload["link"]),
-        title=f"Link: {payload['link'].get('name') or link_id}",
+        title=Text(f"Link: {payload['link'].get('name') or link_id}"),
         border_style="dim white",
         expand=False,
     ))
@@ -214,14 +215,14 @@ def render_show(payload, link_id):
     ))
 
 
-def render_why(payload):
+def render_why(payload, *, console=None):
     diagnosis = payload["diagnosis"]
-    console = Console()
+    console = Console() if console is None else console
     table = Table(box=None, show_header=False, padding=(0, 1))
     table.add_column("Field", style="bold")
     table.add_column("Value")
     table.add_row("ID", str(payload["uuid"]))
-    table.add_row("Name", payload.get("name") or "null")
+    table.add_row("Name", Text(str(payload.get("name") or "null")))
     table.add_row("State", str(diagnosis["state"]))
     table.add_row("Availability", availability_label({"advancedStatus": payload.get("advancedStatus")}))
     table.add_row("Reason", str(diagnosis["reason"]))
@@ -239,32 +240,32 @@ def render_why(payload):
         )
 
 
-def render_check(payload):
+def render_check(payload, *, console=None):
     status = payload.get("availableStatus") or {}
     status_id = status.get("id") or "UNKNOWN"
     label = status.get("label")
     availability = f"{status_id} ({label})" if label else status_id
 
-    console = Console()
+    console = Console() if console is None else console
     table = Table(box=None, show_header=False, padding=(0, 1))
     table.add_column("Field", style="bold")
     table.add_column("Value")
     table.add_row("ID", str(payload.get("uuid")))
-    table.add_row("Name", payload.get("name") or "null")
+    table.add_row("Name", Text(str(payload.get("name") or "null")))
     table.add_row("Availability", availability)
     console.print(table)
 
 
-def render_list(links, detail=False):
+def render_list(links, detail=False, *, console=None):
+    console = Console() if console is None else console
     if not links:
-        return print("Download queue is empty.")
-
-    console = Console()
+        render_message("Download queue is empty.", console=console)
+        return
     if detail:
         for link in links:
             panel = Panel(
                 _raw_detail_text(link),
-                title=link['name'],
+                title=Text(str(link['name'])),
                 border_style="dim white",
                 expand=False
             )
@@ -290,22 +291,23 @@ def render_list(links, detail=False):
                 size_fmt,
                 _raw_value(link.get("host")),
                 str(diagnosis["reason"]),
-                link['name'],
+                Text(str(link['name'])),
             )
         console.print(table)
 
 
-def render_grabber(links, detail=False):
-    if not links: return print("LinkGrabber is empty.")
-
-    console = Console()
+def render_grabber(links, detail=False, *, console=None):
+    console = Console() if console is None else console
+    if not links:
+        render_message("LinkGrabber is empty.", console=console)
+        return
     table = Table(title=f"Pending Links ({len(links)})", box=box.SIMPLE)
     table.add_column("ID", style="dim")
     table.add_column("Name")
     if detail: table.add_column("URL", style="blue")
 
     for l in links:
-        row = [str(l['uuid']), l['name']]
+        row = [str(l['uuid']), Text(str(l['name']))]
         if detail: row.append(l.get('url', ''))
         table.add_row(*row)
 
@@ -313,13 +315,13 @@ def render_grabber(links, detail=False):
     console.print("\n[green]Run 'jd confirm' to start downloading.[/]")
 
 
-def render_status(state, links):
-    active = [l for l in links if l.get('running')]
-    current_speed = sum(l.get('speed', 0) for l in active)
+def render_status(state, links, *, console=None):
+    active, _ = partition_links(links)
+    summary = summarize_transfers(active)
 
-    console = Console()
+    console = Console() if console is None else console
     console.print(f"[bold]State:[/bold]  {state}")
-    console.print(f"[bold]Speed:[/bold]  {utils.human_size(current_speed)}/s")
+    console.print(f"[bold]Speed:[/bold]  {utils.human_size(summary.speed)}/s")
     console.print(f"[bold]Active:[/bold] {len(active)}")
 
     if active:
@@ -331,15 +333,31 @@ def render_status(state, links):
         table.add_column("ETA", justify="right", style="green")
 
         for l in active:
-            total = l.get('bytesTotal', 1) or 1
-            pct = (l.get('bytesLoaded', 0) / total) * 100
-            size_str = f"{utils.human_size(l.get('bytesLoaded',0))}/{utils.human_size(total)}"
+            progress = transfer_progress(l)
+            size_str = f"{utils.human_size(progress.loaded)}/{utils.human_size(progress.total)}"
 
             table.add_row(
-                l['name'],
-                f"{pct:.1f}%",
+                Text(str(l['name'])),
+                utils.human_percent(progress.percent, precision=1),
                 size_str,
-                f"{utils.human_size(l.get('speed',0))}/s",
-                utils.human_eta(l.get('eta', 0))
+                f"{utils.human_size(progress.speed)}/s",
+                utils.human_eta(progress.eta)
             )
         console.print(table)
+
+
+def render_check_all(payload, *, console=None):
+    console = Console() if console is None else console
+    if payload["started"]:
+        render_message(
+            f"Started online status check for {payload['linkCount']} links. "
+            "JDownloader will process them in the background.", console=console,
+        )
+    else:
+        render_message("No download links to check.", console=console)
+
+
+def render_message(message, *, console=None):
+    """Write literal command feedback to the selected presentation output."""
+    console = Console() if console is None else console
+    console.print(Text(str(message)))
