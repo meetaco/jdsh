@@ -1,5 +1,6 @@
 """Download operations shared by CLI and TUI; no terminal output or process exits."""
 
+import logging
 import time
 
 from .client import (
@@ -11,21 +12,22 @@ from .client import (
 )
 # available_status preserves the former CLI helper: non-dict states return None.
 from .diagnostics import available_status, diagnose_link
+from .errors import ServiceError
 
 CHECK_TIMEOUT_SECONDS = 30.0
 CHECK_POLL_INTERVAL_SECONDS = 0.1
 CHECK_FAST_COMPLETION_GRACE_SECONDS = 1.0
 
 
-class ShowError(RuntimeError):
+class ShowError(ServiceError):
     pass
 
 
-class CheckError(RuntimeError):
+class CheckError(ServiceError):
     pass
 
 
-class WhyError(RuntimeError):
+class WhyError(ServiceError):
     pass
 
 
@@ -158,7 +160,7 @@ def explain_download(device, link_id):
     try:
         controller_state = device.downloadcontroller.get_current_state()
     except Exception:
-        pass
+        logging.getLogger(__name__).debug("Controller state unavailable", exc_info=True)
 
     return {
         "uuid": link.get("uuid"),
@@ -169,3 +171,24 @@ def explain_download(device, link_id):
         "advancedStatus": link.get("advancedStatus"),
         "extractionStatus": link.get("extractionStatus"),
     }
+
+
+class ReplacementError(ServiceError):
+    """Replacing a link failed, possibly after removal of the original."""
+
+
+def replace_download(device, link_id, url):
+    """Preserve removal/add order and report partial success explicitly."""
+    try:
+        device.downloads.remove_links([link_id], [])
+    except Exception as e:
+        raise ReplacementError(f"Failed to remove original link {link_id}: {e}") from e
+    try:
+        device.linkgrabber.add_links([{
+            "links": url, "autostart": True, "packageName": f"Rep_{link_id}",
+        }])
+    except Exception as e:
+        raise ReplacementError(
+            f"Original link {link_id} was removed, but adding the replacement failed: {e}. "
+            "Add the replacement URL again with 'jd add'."
+        ) from e

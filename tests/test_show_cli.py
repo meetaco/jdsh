@@ -83,7 +83,7 @@ class ShowCommandTests(unittest.TestCase):
         console = Console(file=output, force_terminal=False, width=200)
 
         with patch.object(rendering, "Console", return_value=console):
-            cli.cmd_show(device, SimpleNamespace(id=123, as_json=False))
+            cli._execute(cli.cmd_show, device, SimpleNamespace(id=123, as_json=False))
 
         device.downloads.query_links.assert_called_once_with([self.show_query(123)])
         device.downloads.query_packages.assert_called_once_with([self.package_query(999)])
@@ -104,7 +104,7 @@ class ShowCommandTests(unittest.TestCase):
 
         with patch("sys.stderr", new_callable=io.StringIO) as stderr:
             with self.assertRaises(SystemExit) as ctx:
-                cli.cmd_show(device, SimpleNamespace(id=999, as_json=False))
+                cli._execute(cli.cmd_show, device, SimpleNamespace(id=999, as_json=False))
 
         device.downloads.query_links.assert_called_once_with([self.show_query(999)])
         self.assertEqual(ctx.exception.code, 1)
@@ -116,7 +116,7 @@ class ShowCommandTests(unittest.TestCase):
         device = self.build_device()
 
         with patch("sys.stdout", new_callable=io.StringIO) as stdout:
-            cli.cmd_show(device, SimpleNamespace(id=123, as_json=True))
+            cli._execute(cli.cmd_show, device, SimpleNamespace(id=123, as_json=True))
 
         payload = json.loads(stdout.getvalue())
         self.assertEqual(payload["link"]["uuid"], 123)
@@ -129,7 +129,7 @@ class ShowCommandTests(unittest.TestCase):
         device.downloads.query_links.return_value = [{"uuid": 123, "name": "orphan.bin"}]
 
         with patch("sys.stdout", new_callable=io.StringIO) as stdout:
-            cli.cmd_show(device, SimpleNamespace(id=123, as_json=True))
+            cli._execute(cli.cmd_show, device, SimpleNamespace(id=123, as_json=True))
 
         self.assertIsNone(json.loads(stdout.getvalue())["package"])
         device.downloads.query_packages.assert_not_called()
@@ -142,7 +142,7 @@ class ShowCommandTests(unittest.TestCase):
         console = Console(file=output, force_terminal=False, width=200)
 
         with patch.object(rendering, "Console", return_value=console):
-            cli.cmd_show(device, SimpleNamespace(id=123, as_json=False))
+            cli._execute(cli.cmd_show, device, SimpleNamespace(id=123, as_json=False))
 
         rendered = output.getvalue()
         self.assertIn("Package", rendered)
@@ -156,7 +156,7 @@ class ShowCommandTests(unittest.TestCase):
 
         with patch("sys.stderr", new_callable=io.StringIO) as stderr:
             with self.assertRaises(SystemExit) as ctx:
-                cli.cmd_show(device, SimpleNamespace(id=123, as_json=False))
+                cli._execute(cli.cmd_show, device, SimpleNamespace(id=123, as_json=False))
 
         self.assertEqual(ctx.exception.code, 1)
         self.assertIn("Failed to query parent package", stderr.getvalue())
@@ -168,7 +168,7 @@ class ShowCommandTests(unittest.TestCase):
 
         with patch("sys.stderr", new_callable=io.StringIO) as stderr:
             with self.assertRaises(SystemExit) as ctx:
-                cli.cmd_show(device, SimpleNamespace(id=123, as_json=False))
+                cli._execute(cli.cmd_show, device, SimpleNamespace(id=123, as_json=False))
 
         self.assertEqual(ctx.exception.code, 1)
         self.assertIn("Failed to query download URLs", stderr.getvalue())
@@ -179,7 +179,7 @@ class ShowCommandTests(unittest.TestCase):
 
         with patch("sys.stderr", new_callable=io.StringIO) as stderr:
             with self.assertRaises(SystemExit) as ctx:
-                cli.cmd_show(device, SimpleNamespace(id=123, as_json=False))
+                cli._execute(cli.cmd_show, device, SimpleNamespace(id=123, as_json=False))
 
         self.assertEqual(ctx.exception.code, 1)
         self.assertIn("Failed to query download link", stderr.getvalue())

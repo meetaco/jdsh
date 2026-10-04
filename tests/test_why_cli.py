@@ -112,7 +112,7 @@ class WhyCommandTests(unittest.TestCase):
         console = Console(file=output, force_terminal=False, width=200)
 
         with patch.object(rendering, "Console", return_value=console):
-            cli.cmd_why(device, SimpleNamespace(id=123, as_json=False))
+            cli._execute(cli.cmd_why, device, SimpleNamespace(id=123, as_json=False))
 
         device.downloads.query_links.assert_called_once_with([self.query(123)])
         device.downloadcontroller.get_current_state.assert_called_once_with()
@@ -126,7 +126,7 @@ class WhyCommandTests(unittest.TestCase):
         device = self.build_device()
 
         with patch("sys.stdout", new_callable=io.StringIO) as stdout:
-            cli.cmd_why(device, SimpleNamespace(id=123, as_json=True))
+            cli._execute(cli.cmd_why, device, SimpleNamespace(id=123, as_json=True))
 
         payload = json.loads(stdout.getvalue())
         self.assertEqual(payload["controllerState"], "RUNNING")
@@ -139,7 +139,7 @@ class WhyCommandTests(unittest.TestCase):
         device.downloadcontroller.get_current_state.side_effect = RuntimeError("unavailable")
 
         with patch("sys.stdout", new_callable=io.StringIO) as stdout:
-            cli.cmd_why(device, SimpleNamespace(id=123, as_json=True))
+            cli._execute(cli.cmd_why, device, SimpleNamespace(id=123, as_json=True))
 
         payload = json.loads(stdout.getvalue())
         self.assertIsNone(payload["controllerState"])
@@ -151,7 +151,7 @@ class WhyCommandTests(unittest.TestCase):
 
         with patch("sys.stderr", new_callable=io.StringIO) as stderr:
             with self.assertRaises(SystemExit) as ctx:
-                cli.cmd_why(device, SimpleNamespace(id=999, as_json=False))
+                cli._execute(cli.cmd_why, device, SimpleNamespace(id=999, as_json=False))
 
         self.assertEqual(ctx.exception.code, 1)
         self.assertIn("Download link ID not found: 999", stderr.getvalue())

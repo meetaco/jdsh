@@ -34,7 +34,7 @@ class CompactDiagnosticListTests(unittest.TestCase):
         console = Console(file=output, force_terminal=False, width=240)
 
         with patch.object(rendering, "Console", return_value=console):
-            cli.cmd_list(device, SimpleNamespace(detail=False))
+            cli._execute(cli.cmd_list, device, SimpleNamespace(detail=False))
 
         device.downloads.query_links.assert_called_once_with(
             [LIST_LINK_STATE_QUERY.copy()]
@@ -97,7 +97,7 @@ class CompactDiagnosticListTests(unittest.TestCase):
         console = Console(file=output, force_terminal=False, width=200)
 
         with patch.object(rendering, "Console", return_value=console):
-            cli.cmd_list(device, SimpleNamespace(detail=True))
+            cli._execute(cli.cmd_list, device, SimpleNamespace(detail=True))
 
         device.downloads.query_links.assert_called_once_with(
             [DOWNLOAD_LINK_STATE_QUERY.copy()]

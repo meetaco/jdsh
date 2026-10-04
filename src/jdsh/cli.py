@@ -1,8 +1,12 @@
 import argparse
 import json
+import logging
+import os
+from contextlib import contextmanager
 import sys
 
 from . import clipboard, config, rendering, services, tui
+from .errors import JDShError
 from .client import (
     DOWNLOAD_LINK_STATE_QUERY,
     JDClient,
@@ -15,24 +19,16 @@ def print_help():
 
 
 def cmd_status(device, args):
-    try:
-        state = device.downloadcontroller.get_current_state()
-        links = device.downloads.query_links([{
-            "name": True, "bytesLoaded": True, "bytesTotal": True, 
-            "speed": True, "running": True, "eta": True, "status": True
-        }])
-        
-        rendering.render_status(state, links)
-    except Exception as e:
-        print(f"Error fetching status: {e}")
+    state = device.downloadcontroller.get_current_state()
+    links = device.downloads.query_links([{
+        "name": True, "bytesLoaded": True, "bytesTotal": True,
+        "speed": True, "running": True, "eta": True, "status": True,
+    }])
+    rendering.render_status(state, links)
 
 
 def cmd_show(device, args):
-    try:
-        payload = services.show_download(device, args.id)
-    except services.ShowError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        raise SystemExit(1)
+    payload = services.show_download(device, args.id)
 
     if args.as_json:
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
@@ -43,11 +39,7 @@ def cmd_show(device, args):
 
 def cmd_check(device, args):
     if getattr(args, "all_links", False):
-        try:
-            payload = services.check_all_downloads(device)
-        except services.CheckError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            raise SystemExit(1)
+        payload = services.check_all_downloads(device)
 
         if args.as_json:
             print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
@@ -60,11 +52,7 @@ def cmd_check(device, args):
             print("No download links to check.")
         return
 
-    try:
-        payload = services.check_download(device, args.id)
-    except services.CheckError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        raise SystemExit(1)
+    payload = services.check_download(device, args.id)
 
     if args.as_json:
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
@@ -74,11 +62,7 @@ def cmd_check(device, args):
 
 
 def cmd_why(device, args):
-    try:
-        payload = services.explain_download(device, args.id)
-    except services.WhyError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        raise SystemExit(1)
+    payload = services.explain_download(device, args.id)
 
     if args.as_json:
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
@@ -106,23 +90,15 @@ def cmd_add(device, args):
             with open(file_path, encoding="utf-8-sig") as url_file:
                 links.extend(line.strip() for line in url_file if line.strip())
         except (OSError, UnicodeError) as e:
-            print(f"Error: cannot read URL file {file_path!r}: {e}", file=sys.stderr)
-            raise SystemExit(1)
+            raise JDShError(f"cannot read URL file {file_path!r}: {e}") from e
 
     if args.clipboard:
-        try:
-            clipboard_links = clipboard.read_clipboard_links()
-        except clipboard.ClipboardError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            raise SystemExit(1)
-
-        links.extend(clipboard_links)
+        links.extend(clipboard.read_clipboard_links())
 
     if file_path is not None or args.clipboard:
         links = clipboard.dedupe_preserve_order(links)
     if not links:
-        print("Error: no URLs to add", file=sys.stderr)
-        raise SystemExit(1)
+        raise JDShError("no URLs to add")
     link_str = ",".join(links)
 
     device.linkgrabber.add_links([{"links": link_str, "autostart": False, "priority": "DEFAULT"}])
@@ -142,9 +118,7 @@ def cmd_remove(device, args):
 
 
 def cmd_replace(device, args):
-    try: device.downloads.remove_links([args.uuid], [])
-    except: pass
-    device.linkgrabber.add_links([{"links": args.url, "autostart": True, "packageName": f"Rep_{args.uuid}"}])
+    services.replace_download(device, args.uuid, args.url)
     print("Link replaced and restarted.")
 
 
@@ -161,7 +135,9 @@ def cmd_simple(device, args):
 def cmd_version(device, args):
     print(f"JDSH v{config.VERSION}")
     try: print(f"JD Core: {device.action('/jd/getCoreRevision', [])}")
-    except: print("JD Core: Unknown")
+    except Exception:
+        logging.getLogger(__name__).debug("Core version unavailable", exc_info=True)
+        print("JD Core: Unknown")
 
 
 def _build_parser():
@@ -255,26 +231,32 @@ def _parse_args(argv):
     return args
 
 
-def main():
-    client = JDClient()
-    
-    # Interactive Mode
-    if len(sys.argv) == 1:
-        client.connect()
-        tui.run(client)
-        sys.exit(0)
+def _execute(action, *args):
+    """Present operation failures at the CLI boundary; preserve parser exits."""
+    try:
+        return action(*args)
+    except Exception as e:
+        logging.getLogger(__name__).debug("Command failed", exc_info=True)
+        print(f"Error: {e}", file=sys.stderr)
+        raise SystemExit(1) from e
 
-    if "-h" in sys.argv or "--help" in sys.argv:
+
+def _main(argv):
+    if "-h" in argv or "--help" in argv:
         print_help()
-        sys.exit(0)
-
-    args = _parse_args(sys.argv[1:])
-    
-    if args.command in ["help", None]:
+        return
+    args = _parse_args(argv) if argv else None
+    if args is not None and args.command in ["help", None]:
         print_help()
-        sys.exit(0)
+        return
 
+    settings = config.load_settings()
+    client = JDClient(settings)
     device = client.connect()
+    if args is None:
+        tui.run(client)
+        return
+
     actions = {
         'status': cmd_status,
         'list': cmd_list, 'ls': cmd_list,
@@ -283,13 +265,42 @@ def main():
         'check': cmd_check,
         'grabber': cmd_grabber, 'confirm': cmd_confirm,
         'add': cmd_add, 'remove': cmd_remove, 'rm': cmd_remove,
-        'replace': cmd_replace, 'start': cmd_simple, 
+        'replace': cmd_replace, 'start': cmd_simple,
         'stop': cmd_simple, 'clear': cmd_simple,
         'version': cmd_version,
     }
-    
-    if args.command in actions:
-        actions[args.command](device, args)
+    handler = actions.get(args.command)
+    if handler is None:
+        raise JDShError(f"Unsupported command: {args.command}")
+    handler(device, args)
+
+
+@contextmanager
+def _debug_logging():
+    """Enable only JDSH debug output and restore embedding application's logger."""
+    if os.environ.get("JDSH_DEBUG") != "1":
+        yield
+        return
+    logger = logging.getLogger("jdsh")
+    previous_level, previous_propagate = logger.level, logger.propagate
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
+    try:
+        yield
+    finally:
+        logger.removeHandler(handler)
+        handler.close()
+        logger.setLevel(previous_level)
+        logger.propagate = previous_propagate
+
+
+def main(argv=None):
+    with _debug_logging():
+        _execute(_main, sys.argv[1:] if argv is None else list(argv))
+
 
 if __name__ == "__main__":
     main()

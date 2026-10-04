@@ -96,11 +96,33 @@ On macOS, `jd add --clipboard` reads the clipboard's `public.html` representatio
 
 `jd add --file <path>` (or `-f <path>`) reads a UTF-8 text file containing one URL per line, with or without a BOM. Blank lines are ignored and surrounding whitespace is trimmed. You can combine it with positional URLs and `--clipboard`; links are added in that order, keeping only the first occurrence of each URL. An unreadable file or an input containing no URLs produces an error without adding links.
 
+## Errors
+
+Command failures are written to stderr and exit with status 1; argument errors
+exit with status 2. Diagnostic JSON is written only on success. The TUI shows
+polling/operation failures and keeps polling so it can recover. If `replace`
+removes the original link but cannot add its replacement, it reports that partial
+result and asks you to add the replacement URL again.
+Set `JDSH_DEBUG=1` to include JDSH tracebacks on stderr when diagnosing failures
+(for example, `JDSH_DEBUG=1 jd status`). JSON output still goes only to stdout.
+TUI operation errors remain visible for five seconds, or until the next successful
+operation; long messages are shown on one line with an ellipsis.
+
 ## Config
 By default, the application runs with standard settings (`Host: 127.0.0.1, Port: 3128`). You can override these defaults by creating a configuration file.
 
-Create file at `~/.config/jdsh/jdsh.config`, with the contents below.
+Create file at `~/.config/jdsh/jdsh.conf`, with the contents below.
 You may uncomment any line and change when you need.
+
+`jdsh.conf` is preferred. The previously documented `jdsh.config` filename is
+also supported when `jdsh.conf` is absent; the two files are not merged. Missing
+files use defaults, while unreadable or invalid files report an error. Existing
+files must contain a `[settings]` section; empty files and misspelled sections are
+errors. An empty `[settings]` section uses defaults and still takes precedence
+over `jdsh.config`. Settings are loaded at startup rather than import time. `HOST` must be nonempty, `PORT`
+must be between 1 and 65535, and `REFRESH_RATE` must be finite and positive. TUI polling has a minimum interval of 0.1
+seconds.
+`jd help` remains available even if settings are invalid.
 
 ```ini
 [settings]
