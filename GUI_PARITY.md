@@ -100,3 +100,24 @@ Every diagnosis therefore includes a `source`:
 
 Raw state remains available through `jd show <id>` and `jd ls -d` so a diagnosis
 can always be audited.
+
+## Usability delivery order
+
+Deliver these as separate reviewable PRs, using shared CLI services for later TUI work:
+
+1. Command-specific offline help and accurate add/confirm/start guidance.
+   Keep configuration documentation aligned with the existing `jdsh.conf` and
+   legacy `jdsh.config` support.
+2. Queue search, state/host filters, sorting, and package summaries.
+3. Consistent link/package selection and individual download actions.
+4. LinkGrabber inspection and selective confirmation, including identifying the
+   links from a particular add operation.
+5. TUI selection, scrolling, search, details/diagnosis, and discoverable shortcuts.
+   Show last successful refresh and reconnection state during connection failures.
+6. Connection/configuration diagnosis (`jd doctor`) and consistent JSON output
+   for list, status, and LinkGrabber commands.
+
+Replacement already adds the new URL before removing the original link. Further
+replacement improvements should preserve that ordering and make partial outcomes
+clear to the user. Account, extraction, and settings controls remain in the GUI
+parity phases above.

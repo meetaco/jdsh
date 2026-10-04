@@ -100,7 +100,7 @@ def print_help(*, console=None):
 
     add_section("Controls")
     add_cmd("start", "", "Start/Resume downloads")
-    add_cmd("stop", "", "Pause/Stop downloads")
+    add_cmd("stop", "", "Stop downloads")
     add_cmd("clear", "", "Remove finished items from list")
     add_cmd("replace", "<uuid> <url>", "Replace a dead link URL")
 
@@ -109,6 +109,8 @@ def print_help(*, console=None):
     add_cmd("help", "", "Show this help message")
 
     examples = Text.from_markup(
+        "[dim]# command options:[/]\n"
+        "[bold cyan]jd add --help[/]\n\n"
         "[dim]# inspect queue state:[/]\n"
         "[bold cyan]jd ls[/]\n"
         "[bold cyan]jd why[/] [green]123456789[/]\n"
@@ -312,7 +314,7 @@ def render_grabber(links, detail=False, *, console=None):
         table.add_row(*row)
 
     console.print(table)
-    console.print("\n[green]Run 'jd confirm' to start downloading.[/]")
+    console.print("\n[green]Run 'jd confirm' to move pending links to the queue, then 'jd start' to start or resume downloads.[/]")
 
 
 def render_status(state, links, *, console=None):
