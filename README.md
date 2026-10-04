@@ -29,6 +29,8 @@ pip install jdsh
 You can now use the `jd` command globally from anywhere in your terminal.
 
 ### Interactive Mode
+Use `jd --help` for the command overview and `jd <command> --help` for command-specific options (for example, `jd add --help`). Help is available without connecting to JDownloader.
+
 Simply run `jd` without arguments to enter the interactive mode.
 
 ```bash
@@ -51,6 +53,8 @@ jd
 │    Queue Management                                                                                                                                                  │
 │    list (ls)                [-d]                     List active downloads                                                                                           │
 │    show                     <id> [--json]            Show raw link, package, and URL details                                                                         │
+│    why                      <id> [--json]            Explain why a download is not progressing                                                                       │
+│    check                    <id> | --all [--json]    Force-refresh link availability                                                                                 │
 │    grabber                  [-d]                     List pending links inside LinkGrabber                                                                           │
 │    add                      [<url>...] [--clipboard] [-f <path>] Add links to LinkGrabber                                                                            │
 │    confirm                                           Move all pending links to Queue                                                                                 │
@@ -58,7 +62,7 @@ jd
 │                                                                                                                                                                      │
 │    Controls                                                                                                                                                          │
 │    start                                             Start/Resume downloads                                                                                          │
-│    stop                                              Pause/Stop downloads                                                                                            │
+│    stop                                              Stop downloads                                                                                                  │
 │    clear                                             Remove finished items from list                                                                                 │
 │    replace                  <uuid> <url>             Replace a dead link URL                                                                                         │
 │                                                                                                                                                                      │
@@ -81,6 +85,7 @@ jd
   jd add "http://site.com/file.exe" --clipboard
   jd grabber
   jd confirm
+  jd start
 
   # detailed list view:
   jd ls -d
@@ -89,6 +94,8 @@ jd
   jd show 123456789
   jd show 123456789 --json
 ```
+
+`jd confirm` moves **all** pending LinkGrabber packages to the download queue. It does not explicitly start the download controller; use `jd start` to start or resume it. If the controller is already running, newly moved links may begin downloading.
 
 `jd show <id>` uses the numeric download-link ID shown by `jd ls`. It reports the raw download-link state, the parent package details when available, and separate `getDownloadUrls` responses for all five JDownloader URL display types: `CUSTOM`, `REFERRER`, `ORIGIN`, `CONTAINER`, and `CONTENT`. JDownloader selects only the first matching URL type within a single `getDownloadUrls` request, so JDSH queries each type separately. `--json` emits one object with `link`, `package`, and `downloadUrls`; the keys under `downloadUrls` are the requested URL types. If JDownloader's optional `UseUrlOrderForMyJD` setting is enabled, JDownloader may override the requested type with its configured URL order. The download-link password field is intentionally not requested by this diagnostic command.
 

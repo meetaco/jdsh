@@ -9,20 +9,23 @@ def _build_parser():
     # The CLI handles no-command help and no-argument TUI startup separately.
     sub = parser.add_subparsers(dest="command", required=False)
 
-    sub.add_parser("status")
+    def command(name, description, **kwargs):
+        return sub.add_parser(name, description=description, help=description, **kwargs)
 
-    p_ls = sub.add_parser("list", aliases=["ls"])
-    p_ls.add_argument("-d", "--detail", action="store_true")
+    command("status", "Show a static snapshot of the download queue.")
 
-    p_show = sub.add_parser("show")
+    p_ls = command("list", 'List downloads with availability and reason.', aliases=["ls"])
+    p_ls.add_argument("-d", "--detail", action="store_true", help="Show detailed link information")
+
+    p_show = command("show", 'Show raw link, package, URL, and diagnosis details.')
     p_show.add_argument("id", type=int, help="Download link ID shown by jd ls")
     p_show.add_argument("--json", action="store_true", dest="as_json", help="Print combined raw API data as JSON")
 
-    p_why = sub.add_parser("why")
+    p_why = command("why", 'Explain why a download is not progressing.')
     p_why.add_argument("id", type=int, help="Download link ID shown by jd ls")
     p_why.add_argument("--json", action="store_true", dest="as_json", help="Print diagnosis and source evidence as JSON")
 
-    p_check = sub.add_parser("check")
+    p_check = command("check", 'Request a fresh availability check for one link or the whole queue.')
     p_check.add_argument("id", nargs="?", type=int, help="Download link ID shown by jd ls")
     p_check.add_argument(
         "--all",
@@ -32,27 +35,27 @@ def _build_parser():
     )
     p_check.add_argument("--json", action="store_true", dest="as_json", help="Print check result as JSON")
 
-    p_gr = sub.add_parser("grabber")
-    p_gr.add_argument("-d", "--detail", action="store_true")
+    p_gr = command("grabber", 'List pending links in LinkGrabber.')
+    p_gr.add_argument("-d", "--detail", action="store_true", help="Show detailed link information")
 
-    sub.add_parser("confirm")
-    sub.add_parser("start")
-    sub.add_parser("stop")
-    sub.add_parser("clear")
-    sub.add_parser("version")
-    sub.add_parser("help")
+    command("confirm", 'Move all pending packages to the download queue. Use jd start to start or resume the download controller.')
+    command("start", 'Start or resume the download controller.')
+    command("stop", 'Stop the download controller.')
+    command("clear", 'Remove finished links from the queue; downloaded files are kept.')
+    command("version", 'Show JDSH and JDownloader core versions.')
+    command("help", 'Show the command overview.')
 
-    p_add = sub.add_parser("add")
+    p_add = command("add", 'Add URLs to LinkGrabber from arguments, a UTF-8 file, or the macOS clipboard. Then use jd confirm to move pending links to the queue and jd start to start or resume the download controller.')
     p_add.add_argument("--clipboard", action="store_true", help="Add links from the macOS clipboard")
     p_add.add_argument("-f", "--file", metavar="PATH", help="Read a UTF-8 text file containing one URL per line")
-    p_add.add_argument("urls", nargs="*")
+    p_add.add_argument("urls", nargs="*", metavar="URL", help="URLs to add; can be combined with --file and --clipboard")
 
-    p_rm = sub.add_parser("remove", aliases=["rm"])
-    p_rm.add_argument("uuids", nargs="+")
+    p_rm = command("remove", 'Remove the specified download links from the queue.', aliases=["rm"])
+    p_rm.add_argument("uuids", nargs="+", metavar="ID", help="Download link IDs shown by jd ls")
 
-    p_rep = sub.add_parser("replace")
-    p_rep.add_argument("uuid")
-    p_rep.add_argument("url")
+    p_rep = command("replace", 'Add a replacement URL with autostart, then remove the original link.')
+    p_rep.add_argument("uuid", metavar="ID", help="Original download link ID shown by jd ls")
+    p_rep.add_argument("url", metavar="URL", help="Replacement URL")
     return parser
 
 

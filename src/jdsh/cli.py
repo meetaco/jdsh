@@ -74,7 +74,7 @@ def cmd_add(device, args, *, console=None):
         use_clipboard=args.clipboard,
     )
     services.add_to_grabber(device, links)
-    rendering.render_message("Added links to Grabber. Run 'jd confirm' to start.", console=console)
+    rendering.render_message("Added links to Grabber. Run 'jd confirm' to move them to the queue, then 'jd start' to start or resume downloads.", console=console)
 
 
 def cmd_confirm(device, _, *, console=None):
@@ -82,7 +82,7 @@ def cmd_confirm(device, _, *, console=None):
     if not count:
         rendering.render_message("No pending packages.", console=console)
         return
-    rendering.render_message(f"Confirmed {count} packages.", console=console)
+    rendering.render_message(f"Moved {count} packages to the download queue. Run 'jd start' to start or resume downloads.", console=console)
 
 
 def cmd_remove(device, args, *, console=None):
@@ -131,7 +131,7 @@ def _execute(action, *args):
 
 
 def _main(argv, console=None):
-    if "-h" in argv or "--help" in argv:
+    if argv in (["-h"], ["--help"]):
         print_help(console=console)
         return
     args = _parse_args(argv) if argv else None
