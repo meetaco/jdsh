@@ -15,11 +15,11 @@ class SettingsTests(unittest.TestCase):
             importlib.reload(config)
 
     def test_version_uses_distribution_name(self):
+        self.addCleanup(importlib.reload, config)
         with patch('importlib.metadata.version', return_value='1.2.3') as version:
             importlib.reload(config)
             self.assertEqual(config.VERSION, '1.2.3')
             version.assert_called_once_with('jdsh')
-        importlib.reload(config)
 
     def test_defaults_are_immutable(self):
         settings = config.Settings()
@@ -90,3 +90,20 @@ class SettingsTests(unittest.TestCase):
             path.write_bytes(b'\xff')
             with self.assertRaises(ConfigError):
                 config.load_settings(path)
+
+    def test_existing_files_require_settings_section_and_do_not_fall_back(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(Path, 'home', return_value=Path(directory)):
+            folder = Path(directory) / '.config' / 'jdsh'
+            folder.mkdir(parents=True)
+            (folder / 'jdsh.config').write_text('[settings]\nPORT=1234', encoding='utf-8')
+            for text in ('', '# only comments', '[setting]\nPORT=1234', '[DEFAULT]\nPORT=1234'):
+                with self.subTest(text=text):
+                    (folder / 'jdsh.conf').write_text(text, encoding='utf-8')
+                    with self.assertRaisesRegex(ConfigError, r'Missing \[settings\] section'):
+                        config.load_settings()
+
+    def test_empty_settings_section_uses_defaults(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'settings'
+            path.write_text('[settings]\n', encoding='utf-8')
+            self.assertEqual(config.load_settings(path), config.Settings())

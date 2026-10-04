@@ -175,3 +175,163 @@ class TUIErrorTests(unittest.TestCase):
             keyboard.return_value.__enter__.return_value.get_key.side_effect = ['s', KeyboardInterrupt]
             tui.run(client)
         client.toggle_state.assert_not_called()
+
+    def test_operation_error_survives_multiple_polls_then_expires(self):
+        client = MagicMock()
+        client.settings = config.Settings(refresh_rate=0.5)
+        client.fetch_stats.return_value = ('STOPPED', [], [])
+        client.toggle_state.side_effect = ServiceError('start denied')
+        now = [0.0]
+        events = iter(['s', 1.0, 3.0, 6.0, KeyboardInterrupt])
+
+        def key():
+            event = next(events)
+            if event is KeyboardInterrupt:
+                raise KeyboardInterrupt
+            if event == 's':
+                return event
+            now[0] = event
+            return None
+
+        with patch.object(tui, 'Console'), patch.object(tui, 'Live'), \
+             patch.object(tui, 'generate_layout') as render, patch.object(tui, 'KeyboardInput') as keyboard, \
+             patch.object(tui.time, 'monotonic', side_effect=lambda: now[0]), patch.object(tui.time, 'sleep'):
+            keyboard.return_value.__enter__.return_value.get_key.side_effect = key
+            tui.run(client)
+        statuses = [c.kwargs.get('override_status') for c in render.call_args_list]
+        self.assertGreaterEqual(statuses.count('ERROR: start denied'), 3)
+        self.assertIsNone(statuses[-1])
+        self.assertEqual(client.fetch_stats.call_count, 5)
+
+    def test_custom_refresh_rate_controls_polling(self):
+        client = MagicMock()
+        client.settings = config.Settings(refresh_rate=0.25)
+        client.fetch_stats.return_value = ('STOPPED', [], [])
+        now = [0.0]
+
+        def key():
+            if client.fetch_stats.call_count > 1:
+                raise KeyboardInterrupt
+            return None
+
+        def sleep(seconds):
+            now[0] += seconds
+
+        with patch.object(tui, 'Console'), patch.object(tui, 'Live'), \
+             patch.object(tui, 'generate_layout'), patch.object(tui, 'KeyboardInput') as keyboard, \
+             patch.object(tui.time, 'monotonic', side_effect=lambda: now[0]), \
+             patch.object(tui.time, 'sleep', side_effect=sleep) as pauses:
+            keyboard.return_value.__enter__.return_value.get_key.side_effect = key
+            tui.run(client)
+        self.assertEqual(pauses.call_count, 3)
+        self.assertEqual(client.fetch_stats.call_count, 2)
+
+    def test_error_markup_is_literal_and_long_messages_do_not_expand_rows(self):
+        from rich.console import Console
+        for message in ('ERROR: [errno 111] [red]refused[/red]', 'ERROR: line\n' + 'x' * 1000):
+            with self.subTest(message=message):
+                output = io.StringIO()
+                console = Console(file=output, width=120, height=20, force_terminal=False)
+                console.print(tui.generate_layout('ERROR', [], [], override_status=message))
+                self.assertEqual(len(output.getvalue().splitlines()), 20)
+                if '[errno' in message:
+                    self.assertIn('[errno 111]', output.getvalue())
+                else:
+                    self.assertIn('…', output.getvalue())
+
+
+    def test_tiny_refresh_rate_has_minimum_polling_interval(self):
+        client = MagicMock()
+        client.settings = config.Settings(refresh_rate=1e-9)
+        client.fetch_stats.return_value = ('STOPPED', [], [])
+        now = [0.0]
+
+        def key():
+            if client.fetch_stats.call_count > 1:
+                raise KeyboardInterrupt
+            return None
+
+        def sleep(seconds):
+            now[0] += seconds
+
+        with patch.object(tui, 'Console'), patch.object(tui, 'Live'), \
+             patch.object(tui, 'generate_layout'), patch.object(tui, 'KeyboardInput') as keyboard, \
+             patch.object(tui.time, 'monotonic', side_effect=lambda: now[0]), \
+             patch.object(tui.time, 'sleep', side_effect=sleep) as pauses:
+            keyboard.return_value.__enter__.return_value.get_key.side_effect = key
+            tui.run(client)
+        self.assertEqual(pauses.call_count, 1)
+        self.assertEqual(client.fetch_stats.call_count, 2)
+
+
+class DebugAndStartupTests(unittest.TestCase):
+    def test_debug_traceback_goes_to_stderr_and_logger_state_is_restored(self):
+        import logging
+        logger = logging.getLogger('jdsh')
+        previous = (logger.level, logger.propagate, list(logger.handlers))
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.dict('os.environ', {'JDSH_DEBUG': '1'}), \
+             patch.object(cli, '_main', side_effect=TypeError('programming failure')), \
+             contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            with self.assertRaises(SystemExit):
+                cli.main(['status'])
+        self.assertEqual(stdout.getvalue(), '')
+        self.assertIn('Traceback', stderr.getvalue())
+        self.assertIn('TypeError: programming failure', stderr.getvalue())
+        self.assertEqual((logger.level, logger.propagate, list(logger.handlers)), previous)
+
+    def test_default_errors_remain_without_tracebacks(self):
+        with patch.dict('os.environ', {'JDSH_DEBUG': '0'}), \
+             patch.object(cli, '_main', side_effect=TypeError('failure')), \
+             patch('sys.stderr', new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit):
+                cli.main(['status'])
+        self.assertEqual(stderr.getvalue(), 'Error: failure\n')
+
+    def test_no_argument_startup_loads_connects_then_runs_tui(self):
+        settings = config.Settings('example.org', 1234, 0.25)
+        events = MagicMock()
+        with patch.object(cli.config, 'load_settings', events.load), \
+             patch.object(cli, 'JDClient', events.client), patch.object(cli.tui, 'run', events.tui):
+            events.load.return_value = settings
+            cli.main([])
+        from unittest.mock import call
+        self.assertEqual(events.mock_calls, [
+            call.load(), call.client(settings), call.client().connect(), call.tui(events.client.return_value),
+        ])
+
+    def test_replace_cli_failure_never_prints_success(self):
+        client = MagicMock()
+        client.connect.return_value.linkgrabber.add_links.side_effect = RuntimeError('add denied')
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.object(cli.config, 'load_settings', return_value=config.Settings()), \
+             patch.object(cli, 'JDClient', return_value=client), \
+             contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            with self.assertRaises(SystemExit) as caught:
+                cli.main(['replace', '123', 'https://example.org'])
+        self.assertEqual(caught.exception.code, 1)
+        self.assertEqual(stdout.getvalue(), '')
+        self.assertIn('was removed, but adding', stderr.getvalue())
+
+    def test_clipboard_error_uses_common_application_base(self):
+        from jdsh.clipboard import ClipboardError
+        from jdsh.errors import JDShError
+        self.assertTrue(issubclass(ClipboardError, JDShError))
+
+    def test_dispatch_reports_missing_handler_explicitly(self):
+        from types import SimpleNamespace
+        with patch.object(cli, '_parse_args', return_value=SimpleNamespace(command='future')), \
+             patch.object(cli.config, 'load_settings', return_value=config.Settings()), \
+             patch.object(cli, 'JDClient'), patch('sys.stderr', new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit):
+                cli.main(['future'])
+        self.assertIn('Unsupported command: future', stderr.getvalue())
+
+    def test_debug_includes_polling_failure(self):
+        client = MagicMock()
+        client.fetch_stats.side_effect = StatsError('offline')
+        with patch.dict('os.environ', {'JDSH_DEBUG': '1'}), patch('sys.stderr', new_callable=io.StringIO) as stderr:
+            with cli._debug_logging():
+                self.assertEqual(tui._poll_stats(client)[0], 'ERROR')
+        self.assertIn('Polling failed', stderr.getvalue())
+        self.assertIn('StatsError: offline', stderr.getvalue())

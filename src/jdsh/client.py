@@ -118,11 +118,11 @@ class JDClient:
     def connect(self):
         try:
             if not self.api.direct_connect(self.settings.host, self.settings.port):
-                raise ConnectionError(f"Failed to connect to {self.settings.host}:{self.settings.port}")
+                raise ConnectionError("direct connection was not established")
             self.device = self.api.get_device()
             return self.device
         except Exception as e:
-            raise JDConnectionError(f"Connection Error: {e}") from e
+            raise JDConnectionError(f"Failed to connect to {self.settings.host}:{self.settings.port}: {e}") from e
 
     def fetch_stats(self):
         try:

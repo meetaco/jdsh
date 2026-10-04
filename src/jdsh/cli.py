@@ -1,6 +1,8 @@
 import argparse
 import json
 import logging
+import os
+from contextlib import contextmanager
 import sys
 
 from . import clipboard, config, rendering, services, tui
@@ -267,11 +269,37 @@ def _main(argv):
         'stop': cmd_simple, 'clear': cmd_simple,
         'version': cmd_version,
     }
-    actions[args.command](device, args)
+    handler = actions.get(args.command)
+    if handler is None:
+        raise JDShError(f"Unsupported command: {args.command}")
+    handler(device, args)
+
+
+@contextmanager
+def _debug_logging():
+    """Enable only JDSH debug output and restore embedding application's logger."""
+    if os.environ.get("JDSH_DEBUG") != "1":
+        yield
+        return
+    logger = logging.getLogger("jdsh")
+    previous_level, previous_propagate = logger.level, logger.propagate
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
+    try:
+        yield
+    finally:
+        logger.removeHandler(handler)
+        handler.close()
+        logger.setLevel(previous_level)
+        logger.propagate = previous_propagate
 
 
 def main(argv=None):
-    _execute(_main, sys.argv[1:] if argv is None else list(argv))
+    with _debug_logging():
+        _execute(_main, sys.argv[1:] if argv is None else list(argv))
 
 
 if __name__ == "__main__":

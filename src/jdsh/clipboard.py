@@ -6,10 +6,13 @@ from html.parser import HTMLParser
 from typing import Iterable, List, Optional
 
 
+from .errors import JDShError
+
+
 _COMMAND_TIMEOUT_SECONDS = 5
 
 
-class ClipboardError(RuntimeError):
+class ClipboardError(JDShError):
     """Raised when clipboard contents cannot be read or contain no links."""
 
 

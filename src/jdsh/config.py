@@ -43,8 +43,8 @@ def load_settings(path: Optional[Path] = None) -> Settings:
         paths = [directory / "jdsh.conf", directory / "jdsh.config"]
     else:
         paths = [Path(path)]
-    parser = configparser.ConfigParser()
     for candidate in paths:
+        parser = configparser.ConfigParser()
         try:
             with candidate.open(encoding="utf-8-sig") as stream:
                 parser.read_file(stream)
@@ -55,6 +55,8 @@ def load_settings(path: Optional[Path] = None) -> Settings:
         except (OSError, UnicodeError, configparser.Error) as e:
             raise ConfigError(f"Cannot read settings file {candidate}: {e}") from e
         try:
+            if not parser.has_section("settings"):
+                raise ConfigError("Missing [settings] section")
             return Settings(
                 host=parser.get("settings", "host", fallback="127.0.0.1").strip(),
                 port=parser.getint("settings", "port", fallback=3128),

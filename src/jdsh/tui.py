@@ -1,4 +1,5 @@
 import time
+import logging
 import sys
 
 try:
@@ -23,6 +24,10 @@ from rich import box
 
 from . import utils
 from .errors import ServiceError
+
+
+OPERATION_ERROR_SECONDS = 5.0
+MIN_REFRESH_SECONDS = 0.1
 
 
 class KeyboardInput:
@@ -60,7 +65,7 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
     grid.add_column(ratio=1)
     grid.add_column(ratio=1)
 
-    display_state = override_status if override_status else state
+    display_state = " ".join(str(override_status or state).splitlines())
     
     # Colors
     if override_status:
@@ -72,8 +77,11 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
     else:
         st_style, border_color = "bold yellow", "yellow"
 
+    state_text = Text.assemble("State: ", (display_state, st_style))
+    state_text.no_wrap = True
+    state_text.overflow = "ellipsis"
     grid.add_row(
-        Text.assemble("State: ", (display_state, st_style)),
+        state_text,
         Text.assemble("Speed: ", (f"{utils.human_size(current_speed)}/s", "bold cyan")),
         f"[dim]Running total:[/dim] {utils.human_size(total_bytes)}",
     )
@@ -165,6 +173,7 @@ def _poll_stats(client):
         state, running, unfinished = client.fetch_stats()
         return state, running, unfinished, None
     except ServiceError as e:
+        logging.getLogger(__name__).debug("Polling failed", exc_info=True)
         return "ERROR", [], [], f"ERROR: {e}"
 
 
@@ -180,10 +189,13 @@ def run(client):
             last_state, last_running, last_enabled_unfinished, error = _poll_stats(client)
             live.update(generate_layout(last_state, last_running, last_enabled_unfinished, override_status=error))
 
+            operation_error = None
+            operation_error_expires = 0.0
             while True:
-                operation_error = None
                 start_time = time.monotonic()
-                while (time.monotonic() - start_time) < client.settings.refresh_rate:
+                if start_time >= operation_error_expires:
+                    operation_error = None
+                while (time.monotonic() - start_time) < max(client.settings.refresh_rate, MIN_REFRESH_SECONDS):
                     key = kbd.get_key()
                     if key == 's' and last_state != 'ERROR':
                         is_running = last_state in ["RUNNING", "DOWNLOADING"]
@@ -198,8 +210,15 @@ def run(client):
                         
                         try:
                             client.toggle_state(last_state)
+                            operation_error = None
                         except ServiceError as e:
+                            logging.getLogger(__name__).debug("Download control failed", exc_info=True)
                             operation_error = f"ERROR: {e}"
+                            operation_error_expires = time.monotonic() + OPERATION_ERROR_SECONDS
+                            live.update(generate_layout(
+                                last_state, last_running, last_enabled_unfinished,
+                                override_status=operation_error,
+                            ))
                         
                         break
                     
@@ -208,8 +227,10 @@ def run(client):
 
                 state, running, enabled_unfinished, error = _poll_stats(client)
                 last_state, last_running, last_enabled_unfinished = state, running, enabled_unfinished
+                if time.monotonic() >= operation_error_expires:
+                    operation_error = None
                 
-                live.update(generate_layout(state, running, enabled_unfinished, override_status=operation_error or error))
+                live.update(generate_layout(state, running, enabled_unfinished, override_status=error or operation_error))
 
     except KeyboardInterrupt:
         pass

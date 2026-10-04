@@ -158,7 +158,8 @@ class CheckCommandTests(unittest.TestCase):
 
         with patch.object(services.time, "sleep") as sleep, \
              patch("sys.stdout", new_callable=io.StringIO) as stdout:
-            cli._execute(cli.cmd_check,
+            cli._execute(
+                cli.cmd_check,
                 device,
                 SimpleNamespace(id=None, all_links=True, as_json=False),
             )
@@ -177,7 +178,8 @@ class CheckCommandTests(unittest.TestCase):
         device.downloads.query_links.return_value = [{"uuid": 123}, {"uuid": 456}]
 
         with patch("sys.stdout", new_callable=io.StringIO) as stdout:
-            cli._execute(cli.cmd_check,
+            cli._execute(
+                cli.cmd_check,
                 device,
                 SimpleNamespace(id=None, all_links=True, as_json=True),
             )
@@ -194,7 +196,8 @@ class CheckCommandTests(unittest.TestCase):
         device.downloads.query_links.return_value = []
 
         with patch("sys.stdout", new_callable=io.StringIO) as stdout:
-            cli._execute(cli.cmd_check,
+            cli._execute(
+                cli.cmd_check,
                 device,
                 SimpleNamespace(id=None, all_links=True, as_json=False),
             )
@@ -208,7 +211,8 @@ class CheckCommandTests(unittest.TestCase):
 
         with patch("sys.stderr", new_callable=io.StringIO) as stderr:
             with self.assertRaises(SystemExit) as ctx:
-                cli._execute(cli.cmd_check,
+                cli._execute(
+                    cli.cmd_check,
                     device,
                     SimpleNamespace(id=None, all_links=True, as_json=False),
                 )
@@ -224,7 +228,8 @@ class CheckCommandTests(unittest.TestCase):
 
         with patch("sys.stderr", new_callable=io.StringIO) as stderr:
             with self.assertRaises(SystemExit) as ctx:
-                cli._execute(cli.cmd_check,
+                cli._execute(
+                    cli.cmd_check,
                     device,
                     SimpleNamespace(id=None, all_links=True, as_json=False),
                 )
