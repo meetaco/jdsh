@@ -14,42 +14,37 @@ from .client import (
 )
 
 
-def print_help():
-    rendering.print_help()
+def print_help(*, console=None):
+    rendering.print_help(console=console)
 
 
-def cmd_status(device, args):
+def cmd_status(device, args, *, console=None):
     state = device.downloadcontroller.get_current_state()
     links = device.downloads.query_links([{
         "name": True, "bytesLoaded": True, "bytesTotal": True,
         "speed": True, "running": True, "eta": True, "status": True,
     }])
-    rendering.render_status(state, links)
+    rendering.render_status(state, links, console=console)
 
 
-def cmd_show(device, args):
+def cmd_show(device, args, *, console=None):
     payload = services.show_download(device, args.id)
 
     if args.as_json:
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
         return
 
-    rendering.render_show(payload, args.id)
+    rendering.render_show(payload, args.id, console=console)
 
 
-def cmd_check(device, args):
+def cmd_check(device, args, *, console=None):
     if getattr(args, "all_links", False):
         payload = services.check_all_downloads(device)
 
         if args.as_json:
             print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
-        elif payload["started"]:
-            print(
-                f"Started online status check for {payload['linkCount']} links. "
-                "JDownloader will process them in the background."
-            )
         else:
-            print("No download links to check.")
+            rendering.render_check_all(payload, console=console)
         return
 
     payload = services.check_download(device, args.id)
@@ -58,31 +53,31 @@ def cmd_check(device, args):
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
         return
 
-    rendering.render_check(payload)
+    rendering.render_check(payload, console=console)
 
 
-def cmd_why(device, args):
+def cmd_why(device, args, *, console=None):
     payload = services.explain_download(device, args.id)
 
     if args.as_json:
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
         return
 
-    rendering.render_why(payload)
+    rendering.render_why(payload, console=console)
 
 
-def cmd_list(device, args):
+def cmd_list(device, args, *, console=None):
     query = DOWNLOAD_LINK_STATE_QUERY if args.detail else LIST_LINK_STATE_QUERY
     links = device.downloads.query_links([query.copy()])
-    rendering.render_list(links, detail=args.detail)
+    rendering.render_list(links, detail=args.detail, console=console)
 
 
-def cmd_grabber(device, args):
+def cmd_grabber(device, args, *, console=None):
     links = device.linkgrabber.query_links([{"name": True, "uuid": True, "url": True}])
-    rendering.render_grabber(links, detail=args.detail)
+    rendering.render_grabber(links, detail=args.detail, console=console)
 
 
-def cmd_add(device, args):
+def cmd_add(device, args, *, console=None):
     file_path = getattr(args, "file", None)
     links = " ".join(args.urls).split()
     if file_path is not None:
@@ -102,42 +97,43 @@ def cmd_add(device, args):
     link_str = ",".join(links)
 
     device.linkgrabber.add_links([{"links": link_str, "autostart": False, "priority": "DEFAULT"}])
-    print("Added links to Grabber. Run 'jd confirm' to start.")
+    rendering.render_message("Added links to Grabber. Run 'jd confirm' to start.", console=console)
 
 
-def cmd_confirm(device, _):
+def cmd_confirm(device, _, *, console=None):
     pkgs = device.linkgrabber.query_packages([{"uuid": True}])
-    if not pkgs: return print("No pending packages.")
+    if not pkgs: return rendering.render_message("No pending packages.", console=console)
     device.linkgrabber.move_to_downloadlist([], [p['uuid'] for p in pkgs])
-    print(f"Confirmed {len(pkgs)} packages.")
+    rendering.render_message(f"Confirmed {len(pkgs)} packages.", console=console)
 
 
-def cmd_remove(device, args):
+def cmd_remove(device, args, *, console=None):
     device.downloads.remove_links(args.uuids, [])
-    print(f"Removed {len(args.uuids)} items.")
+    rendering.render_message(f"Removed {len(args.uuids)} items.", console=console)
 
 
-def cmd_replace(device, args):
+def cmd_replace(device, args, *, console=None):
     services.replace_download(device, args.uuid, args.url)
-    print("Link replaced and restarted.")
+    rendering.render_message("Link replaced and restarted.", console=console)
 
 
-def cmd_simple(device, args):
+def cmd_simple(device, args, *, console=None):
     cmds = {
         'start': device.downloadcontroller.start_downloads,
         'stop': device.downloadcontroller.stop_downloads,
         'clear': lambda: device.downloads.cleanup("DELETE_FINISHED", "REMOVE_LINKS_ONLY", "ALL", [], [])
     }
     cmds[args.command]()
-    print(f"Command executed: {args.command}")
+    rendering.render_message(f"Command executed: {args.command}", console=console)
 
 
-def cmd_version(device, args):
-    print(f"JDSH v{config.VERSION}")
-    try: print(f"JD Core: {device.action('/jd/getCoreRevision', [])}")
+def cmd_version(device, args, *, console=None):
+    rendering.render_message(f"JDSH v{config.VERSION}", console=console)
+    try:
+        rendering.render_message(f"JD Core: {device.action('/jd/getCoreRevision', [])}", console=console)
     except Exception:
         logging.getLogger(__name__).debug("Core version unavailable", exc_info=True)
-        print("JD Core: Unknown")
+        rendering.render_message("JD Core: Unknown", console=console)
 
 
 def _build_parser():
@@ -241,20 +237,20 @@ def _execute(action, *args):
         raise SystemExit(1) from e
 
 
-def _main(argv):
+def _main(argv, console=None):
     if "-h" in argv or "--help" in argv:
-        print_help()
+        print_help(console=console)
         return
     args = _parse_args(argv) if argv else None
     if args is not None and args.command in ["help", None]:
-        print_help()
+        print_help(console=console)
         return
 
     settings = config.load_settings()
     client = JDClient(settings)
     device = client.connect()
     if args is None:
-        tui.run(client)
+        tui.run(client, console=console)
         return
 
     actions = {
@@ -272,7 +268,7 @@ def _main(argv):
     handler = actions.get(args.command)
     if handler is None:
         raise JDShError(f"Unsupported command: {args.command}")
-    handler(device, args)
+    handler(device, args, console=console)
 
 
 @contextmanager
@@ -297,9 +293,9 @@ def _debug_logging():
         logger.propagate = previous_propagate
 
 
-def main(argv=None):
+def main(argv=None, *, console=None):
     with _debug_logging():
-        _execute(_main, sys.argv[1:] if argv is None else list(argv))
+        _execute(_main, sys.argv[1:] if argv is None else list(argv), console)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 from myjdapi import Myjdapi
 from . import config
+from .stats import partition_links
 from .errors import JDConnectionError, ServiceError, StatsError
 
 
@@ -130,17 +131,7 @@ class JDClient:
 
             links = self.device.downloads.query_links([TUI_LINK_STATE_QUERY.copy()])
 
-            running_links = []
-            enabled_unfinished_links = []
-
-            for link in links:
-                if link.get("finished"):
-                    continue
-
-                if link.get("running"):
-                    running_links.append(link)
-                elif link.get("enabled"):
-                    enabled_unfinished_links.append(link)
+            running_links, enabled_unfinished_links = partition_links(links)
 
             return state, running_links, enabled_unfinished_links
         except Exception as e:

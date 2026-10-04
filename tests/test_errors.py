@@ -297,7 +297,7 @@ class DebugAndStartupTests(unittest.TestCase):
             cli.main([])
         from unittest.mock import call
         self.assertEqual(events.mock_calls, [
-            call.load(), call.client(settings), call.client().connect(), call.tui(events.client.return_value),
+            call.load(), call.client(settings), call.client().connect(), call.tui(events.client.return_value, console=None),
         ])
 
     def test_replace_cli_failure_never_prints_success(self):
