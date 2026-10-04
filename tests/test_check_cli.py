@@ -28,30 +28,6 @@ class CheckCommandTests(unittest.TestCase):
             "advancedStatus": {"AvailableStatus": status},
         }
 
-    def test_parser_accepts_check_id_and_json(self):
-        args = cli._parse_args(["check", "123", "--json"])
-        self.assertEqual(args.command, "check")
-        self.assertEqual(args.id, 123)
-        self.assertFalse(args.all_links)
-        self.assertTrue(args.as_json)
-
-    def test_parser_accepts_check_all_and_json(self):
-        args = cli._parse_args(["check", "--all", "--json"])
-        self.assertEqual(args.command, "check")
-        self.assertIsNone(args.id)
-        self.assertTrue(args.all_links)
-        self.assertTrue(args.as_json)
-
-    def test_parser_requires_id_or_all(self):
-        with patch("sys.stderr", new_callable=io.StringIO), self.assertRaises(SystemExit) as ctx:
-            cli._parse_args(["check"])
-        self.assertEqual(ctx.exception.code, 2)
-
-    def test_parser_rejects_id_with_all(self):
-        with patch("sys.stderr", new_callable=io.StringIO), self.assertRaises(SystemExit) as ctx:
-            cli._parse_args(["check", "123", "--all"])
-        self.assertEqual(ctx.exception.code, 2)
-
     def test_start_online_status_check_uses_downloadsv2_endpoint(self):
         device = MagicMock()
         start_online_status_check(device, [123])

@@ -1,4 +1,11 @@
-"""Compare argument parsing with a trusted local baseline commit (no API calls)."""
+"""One-time migration comparison against a trusted local baseline (no API calls).
+
+Use the pre-extraction main 50ec47e, or a compatible trusted local commit with
+the three former top-level parser functions and only argparse as their external
+dependency. This is optional migration evidence, not a permanent regression
+gate for future intentional CLI changes. AST extraction is not a sandbox;
+only use a baseline whose code you trust.
+"""
 
 import argparse
 import ast
@@ -30,7 +37,7 @@ def main():
     tree = ast.parse(source)
     tree.body = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names]
     if {node.name for node in tree.body} != names:
-        parser.error("baseline must contain all three former CLI argument functions")
+        parser.error("use a trusted local ref containing all three former CLI argument functions (e.g. 50ec47e)")
     # Execute only the selected parser functions from the explicitly trusted ref.
     namespace = {"argparse": argparse}
     exec(compile(tree, "<baseline-cli-arguments>", "exec"), namespace)
@@ -50,6 +57,9 @@ def main():
         ["add", "URL1", "--file", "--clipboard"], ["add", "--file="],
         ["add", "--file", "first.txt", "--file", "last.txt", "URL1"],
         ["add", "URL1", "--unknown"], ["add", "--clip", "URL1"],
+        ["add", "--file", "-myfile.txt"], ["add", "--file=-myfile.txt"],
+        ["add", "--file", "./-myfile.txt"], ["add", "--file", "--", "-myfile.txt"],
+        ["add", "URL1", "--clip", "URL2"], ["add", "-foo"],
     ])
     for file_option in (["--file", "links list.txt"], ["-f", "links list.txt"],
                         ["--file=links list.txt"], ["-flinks.txt"], ["--clipboard"]):

@@ -12,6 +12,16 @@ from jdsh.client import (
 )
 
 
+class ParseArgsCompatibilityTests(unittest.TestCase):
+    def test_parse_args_delegates_and_returns_the_same_namespace(self):
+        argv = ["status"]
+        result = SimpleNamespace(command="status")
+        with patch.object(cli.arguments, "parse_args", return_value=result) as parse:
+            self.assertIs(cli._parse_args(argv), result)
+        parse.assert_called_once_with(argv)
+        self.assertIs(parse.call_args.args[0], argv)
+
+
 class CmdAddTests(unittest.TestCase):
     def test_file_lines_trim_whitespace_ignore_blanks_and_dedupe(self):
         device = MagicMock()

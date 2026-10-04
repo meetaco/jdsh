@@ -1,11 +1,13 @@
 """Command definitions and argument validation, independent of CLI execution."""
 
 import argparse
+from typing import Sequence
 
 
 def _build_parser():
     parser = argparse.ArgumentParser(prog="jd", add_help=False)
-    sub = parser.add_subparsers(dest="command")
+    # The CLI handles no-command help and no-argument TUI startup separately.
+    sub = parser.add_subparsers(dest="command", required=False)
 
     sub.add_parser("status")
 
@@ -55,7 +57,11 @@ def _build_parser():
 
 
 def _normalize_argv(argv):
-    """Move add's options before positionals, preserving option values and --."""
+    """Move add's options before positionals, preserving option values and --.
+
+    For hyphen-prefixed file names use --file=-name.txt or ./-name.txt.
+    A standalone -- terminates options; it cannot escape a file option value.
+    """
     argv = list(argv)
     if not argv or argv[0] != "add":
         return argv
@@ -81,7 +87,7 @@ def _normalize_argv(argv):
     return ["add"] + options + positionals
 
 
-def parse_args(argv):
+def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     """Parse CLI arguments and validate command-specific combinations.
 
     This performs no configuration loading, input reading or API operations.
@@ -98,5 +104,3 @@ def parse_args(argv):
         if args.id is not None and args.all_links:
             parser.error("jd check accepts either <id> or --all, not both")
     return args
-
-

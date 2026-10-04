@@ -71,3 +71,61 @@ class ParseArgsTests(unittest.TestCase):
         self.assertIsNone(args.file)
         self.assertEqual(args.urls, ["--clipboard", "--file"])
 
+
+class CheckArgsTests(unittest.TestCase):
+    def test_parser_accepts_check_id_and_json(self):
+        args = arguments.parse_args(["check", "123", "--json"])
+        self.assertEqual(args.command, "check")
+        self.assertEqual(args.id, 123)
+        self.assertFalse(args.all_links)
+        self.assertTrue(args.as_json)
+
+    def test_parser_accepts_check_all_and_json(self):
+        args = arguments.parse_args(["check", "--all", "--json"])
+        self.assertEqual(args.command, "check")
+        self.assertIsNone(args.id)
+        self.assertTrue(args.all_links)
+        self.assertTrue(args.as_json)
+
+    def test_parser_requires_id_or_all(self):
+        with patch("sys.stderr", new_callable=io.StringIO), self.assertRaises(SystemExit) as ctx:
+            arguments.parse_args(["check"])
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_parser_rejects_id_with_all(self):
+        with patch("sys.stderr", new_callable=io.StringIO), self.assertRaises(SystemExit) as ctx:
+            arguments.parse_args(["check", "123", "--all"])
+        self.assertEqual(ctx.exception.code, 2)
+
+
+class OtherArgsTests(unittest.TestCase):
+    def test_aliases_preserve_command_names_and_values(self):
+        args = arguments.parse_args(["ls", "-d"])
+        self.assertEqual(args.command, "ls")
+        self.assertTrue(args.detail)
+        args = arguments.parse_args(["rm", "1", "2"])
+        self.assertEqual(args.command, "rm")
+        self.assertEqual(args.uuids, ["1", "2"])
+
+    def test_invalid_integer_ids_fail_with_exit_two(self):
+        for command in ("show", "why", "check"):
+            with self.subTest(command=command):
+                with patch("sys.stderr", new_callable=io.StringIO) as stderr, self.assertRaises(SystemExit) as ctx:
+                    arguments.parse_args([command, "invalid"])
+                self.assertEqual(ctx.exception.code, 2)
+                self.assertIn("invalid int value", stderr.getvalue())
+
+    def test_no_command_is_allowed_for_cli_startup(self):
+        self.assertIsNone(arguments.parse_args([]).command)
+
+    def test_hyphen_prefixed_file_paths(self):
+        for argv, expected in ((["add", "--file=-myfile.txt"], "-myfile.txt"),
+                               (["add", "--file", "./-myfile.txt"], "./-myfile.txt")):
+            with self.subTest(argv=argv):
+                self.assertEqual(arguments.parse_args(argv).file, expected)
+        for argv in (["add", "--file", "-myfile.txt"], ["add", "--file", "--", "-myfile.txt"]):
+            with self.subTest(argv=argv):
+                with patch("sys.stderr", new_callable=io.StringIO) as stderr, self.assertRaises(SystemExit) as ctx:
+                    arguments.parse_args(argv)
+                self.assertEqual(ctx.exception.code, 2)
+                self.assertIn("expected one argument", stderr.getvalue())
