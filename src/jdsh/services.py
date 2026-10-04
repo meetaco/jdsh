@@ -7,6 +7,8 @@ from .client import (
     CHECK_LINK_STATE_QUERY,
     DOWNLOAD_LINK_STATE_QUERY,
     DOWNLOAD_PACKAGE_STATE_QUERY,
+    LIST_LINK_STATE_QUERY,
+    STATUS_LINK_STATE_QUERY,
     get_download_urls,
     start_online_status_check,
 )
@@ -17,6 +19,59 @@ from .errors import ServiceError
 CHECK_TIMEOUT_SECONDS = 30.0
 CHECK_POLL_INTERVAL_SECONDS = 0.1
 CHECK_FAST_COMPLETION_GRACE_SECONDS = 1.0
+
+
+# These thin operations preserve SDK failures for the CLI error boundary. They
+# return data only; input collection and success/fallback messages stay in CLI.
+def download_status(device):
+    state = device.downloadcontroller.get_current_state()
+    links = device.downloads.query_links([STATUS_LINK_STATE_QUERY.copy()])
+    return state, links
+
+
+def list_downloads(device, *, detail=False):
+    query = DOWNLOAD_LINK_STATE_QUERY if detail else LIST_LINK_STATE_QUERY
+    return device.downloads.query_links([query.copy()])
+
+
+def list_grabber_links(device):
+    return device.linkgrabber.query_links([{"name": True, "uuid": True, "url": True}])
+
+
+def add_to_grabber(device, links):
+    """Submit the collected links in their original order without starting them."""
+    device.linkgrabber.add_links([{
+        "links": ",".join(links), "autostart": False, "priority": "DEFAULT",
+    }])
+
+
+def confirm_grabber(device):
+    """Move all pending packages in one call; return their count after success."""
+    packages = device.linkgrabber.query_packages([{"uuid": True}])
+    if not packages:
+        return 0
+    device.linkgrabber.move_to_downloadlist([], [package["uuid"] for package in packages])
+    return len(packages)
+
+
+def remove_downloads(device, link_ids):
+    device.downloads.remove_links(link_ids, [])
+
+
+def start_downloads(device):
+    device.downloadcontroller.start_downloads()
+
+
+def stop_downloads(device):
+    device.downloadcontroller.stop_downloads()
+
+
+def clear_finished_downloads(device):
+    device.downloads.cleanup("DELETE_FINISHED", "REMOVE_LINKS_ONLY", "ALL", [], [])
+
+
+def core_revision(device):
+    return device.action("/jd/getCoreRevision", [])
 
 
 class ShowError(ServiceError):
