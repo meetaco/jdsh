@@ -123,6 +123,9 @@ removes the original link but cannot add its replacement, it reports that partia
 result and asks you to add the replacement URL again.
 Set `JDSH_DEBUG=1` to include JDSH tracebacks on stderr when diagnosing failures
 (for example, `JDSH_DEBUG=1 jd status`). JSON output still goes only to stdout.
+TUI polling and control diagnostics now use the `jdsh.tui_runtime` logger.
+If you configure a filter specifically for `jdsh.tui`, update it to
+`jdsh.tui_runtime` or the parent `jdsh` logger.
 TUI operation errors remain visible for five seconds, or until the next successful
 operation; long messages are shown on one line with an ellipsis.
 

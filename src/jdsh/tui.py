@@ -1,5 +1,4 @@
 import time
-import logging
 import sys
 
 try:
@@ -22,13 +21,14 @@ from rich.progress_bar import ProgressBar
 from rich.text import Text
 from rich import box
 
-from . import utils
+from . import tui_runtime, utils
 from .stats import summarize_transfers, transfer_progress
-from .errors import ServiceError
-
-
-OPERATION_ERROR_SECONDS = 5.0
-MIN_REFRESH_SECONDS = 0.1
+# Readable compatibility aliases; patch loop constants in tui_runtime.
+from .tui_runtime import (
+    MIN_REFRESH_SECONDS as MIN_REFRESH_SECONDS,
+    OPERATION_ERROR_SECONDS as OPERATION_ERROR_SECONDS,
+    run_loop,
+)
 
 
 class KeyboardInput:
@@ -162,68 +162,28 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
 
 
 def _poll_stats(client):
-    try:
-        state, running, unfinished = client.fetch_stats()
-        return state, running, unfinished, None
-    except ServiceError as e:
-        logging.getLogger(__name__).debug("Polling failed", exc_info=True)
-        return "ERROR", [], [], f"ERROR: {e}"
+    """Compatibility helper; the loop calls tui_runtime.poll_stats directly.
+
+    Patch tui_runtime.poll_stats to replace polling in the running dashboard.
+    """
+    return tui_runtime.poll_stats(client)
 
 
-def run(client, *, console=None):
+def run(client, *, console=None, keyboard=None, clock=None, sleep=None):
     console = Console() if console is None else console
+    clock = time.monotonic if clock is None else clock
+    sleep = time.sleep if sleep is None else sleep
     console.clear()
-    last_state, last_running, last_enabled_unfinished = "UNKNOWN", [], []
 
     try:
-        with KeyboardInput() as kbd, Live(console=console, refresh_per_second=4, screen=True) as live:
-            live.update(generate_layout("CONNECTING...", [], [], override_status="LOADING..."))
-            
-            last_state, last_running, last_enabled_unfinished, error = _poll_stats(client)
-            live.update(generate_layout(last_state, last_running, last_enabled_unfinished, override_status=error))
+        keyboard = KeyboardInput() if keyboard is None else keyboard
+        with keyboard as kbd, Live(console=console, refresh_per_second=4, screen=True) as live:
+            def render(snapshot, override_status):
+                live.update(generate_layout(
+                    snapshot.state, snapshot.running_links, snapshot.enabled_unfinished_links,
+                    override_status=override_status,
+                ))
 
-            operation_error = None
-            operation_error_expires = 0.0
-            while True:
-                start_time = time.monotonic()
-                if start_time >= operation_error_expires:
-                    operation_error = None
-                while (time.monotonic() - start_time) < max(client.settings.refresh_rate, MIN_REFRESH_SECONDS):
-                    key = kbd.get_key()
-                    if key == 's' and last_state != 'ERROR':
-                        is_running = last_state in ["RUNNING", "DOWNLOADING"]
-                        fb_status = "STOPPING..." if is_running else "STARTING..."
-                        
-                        live.update(generate_layout(
-                            last_state,
-                            last_running,
-                            last_enabled_unfinished,
-                            override_status=fb_status,
-                        ))
-                        
-                        try:
-                            client.toggle_state(last_state)
-                            operation_error = None
-                        except ServiceError as e:
-                            logging.getLogger(__name__).debug("Download control failed", exc_info=True)
-                            operation_error = f"ERROR: {e}"
-                            operation_error_expires = time.monotonic() + OPERATION_ERROR_SECONDS
-                            live.update(generate_layout(
-                                last_state, last_running, last_enabled_unfinished,
-                                override_status=operation_error,
-                            ))
-                        
-                        break
-                    
-                    if key: pass 
-                    time.sleep(0.1)
-
-                state, running, enabled_unfinished, error = _poll_stats(client)
-                last_state, last_running, last_enabled_unfinished = state, running, enabled_unfinished
-                if time.monotonic() >= operation_error_expires:
-                    operation_error = None
-                
-                live.update(generate_layout(state, running, enabled_unfinished, override_status=error or operation_error))
-
+            run_loop(client, get_key=kbd.get_key, render=render, clock=clock, sleep=sleep)
     except KeyboardInterrupt:
         pass
