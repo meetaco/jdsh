@@ -5,7 +5,7 @@ import io
 import unittest
 from unittest.mock import MagicMock, patch
 
-from jdsh import clipboard, url_inputs
+from jdsh import cli, clipboard, url_inputs
 from jdsh.errors import JDShError
 
 
@@ -55,7 +55,7 @@ class URLInputTests(unittest.TestCase):
             streams.append(stream)
             return stream
 
-        with patch("builtins.open", side_effect=open_file) as reader:
+        with patch("jdsh.url_inputs.open", side_effect=open_file, create=True) as reader:
             result = url_inputs.collect_links([], file_path="links.txt")
         reader.assert_called_once_with("links.txt", encoding="utf-8-sig")
         self.assertEqual(result, ["https://a.example", "https://b.example https://c.example"])
@@ -91,6 +91,34 @@ class URLInputTests(unittest.TestCase):
             url_inputs.collect_links(["https://a.example"], use_clipboard=True,
                                      read_clipboard=MagicMock(side_effect=error))
         self.assertIs(caught.exception, error)
+
+    def test_unexpected_file_reader_exception_propagates_intact(self):
+        error = ValueError("reader bug")
+        with self.assertRaises(ValueError) as caught:
+            url_inputs.collect_links(["https://valid.example"], file_path="links.txt",
+                                     read_file=MagicMock(side_effect=error))
+        self.assertIs(caught.exception, error)
+
+    def test_lazy_clipboard_failure_does_not_submit_partial_links_or_print_success(self):
+        error = clipboard.ClipboardError("pasteboard interrupted")
+
+        def read_clipboard():
+            yield "https://first.example"
+            raise error
+
+        device, console = MagicMock(), MagicMock()
+        args = cli._parse_args(["add", "https://pos.example", "--clipboard"])
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.object(clipboard, "read_clipboard_links", side_effect=read_clipboard), \
+             contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            with self.assertRaises(SystemExit) as caught:
+                cli._execute(lambda: cli.cmd_add(device, args, console=console))
+        self.assertEqual(caught.exception.code, 1)
+        self.assertIs(caught.exception.__cause__, error)
+        self.assertEqual(device.mock_calls, [])
+        console.print.assert_not_called()
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(stderr.getvalue(), "Error: pasteboard interrupted\n")
 
     def test_html_href_priority_remains_when_collecting_all_sources(self):
         html = '<a href="https://target.example?x=1&amp;y=2">https://display.invalid</a>'

@@ -23,7 +23,12 @@ def collect_links(
 
     Positional arguments split on whitespace; file entries remain one per line.
     Only file/clipboard inputs enable ordered deduplication across all sources.
+    Injected readers return already extracted, trimmed, nonempty candidates.
+    Their results are not filtered, split or URL-validated here. FileReader takes
+    a file path; ClipboardReader takes no arguments. File I/O/decoding failures
+    (OSError/UnicodeError) are wrapped; other reader exceptions propagate intact.
     Reader failures abort collection, even if an earlier source had valid URLs.
+    Candidates accumulated before a lazy-reader failure are never returned.
     """
     links = " ".join(urls).split()
     if file_path is not None:

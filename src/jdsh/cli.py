@@ -70,7 +70,9 @@ def cmd_grabber(device, args, *, console=None):
 
 def cmd_add(device, args, *, console=None):
     links = url_inputs.collect_links(
-        args.urls, file_path=getattr(args, "file", None), use_clipboard=args.clipboard,
+        args.urls,
+        file_path=getattr(args, "file", None),
+        use_clipboard=args.clipboard,
     )
     services.add_to_grabber(device, links)
     rendering.render_message("Added links to Grabber. Run 'jd confirm' to start.", console=console)
