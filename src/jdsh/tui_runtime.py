@@ -14,6 +14,8 @@ INPUT_POLL_SECONDS = 0.1
 
 @dataclass(frozen=True)
 class Snapshot:
+    """Retain raw list/dict references without mutating them; frozen is shallow."""
+
     state: str
     running_links: List[dict]
     enabled_unfinished_links: List[dict]
@@ -40,9 +42,14 @@ class DashboardController:
         self.operation_error_expires = 0.0
 
     def poll(self):
-        self.snapshot = Snapshot(*poll_stats(self.client))
+        state, running, unfinished, error = poll_stats(self.client)
+        self.snapshot = Snapshot(
+            state=state, running_links=running,
+            enabled_unfinished_links=unfinished, error=error,
+        )
 
     def expire_error(self, now):
+        """Use a sample from the injected clock, reusing the loop start time."""
         if now >= self.operation_error_expires:
             self.operation_error = None
 
@@ -60,6 +67,7 @@ class DashboardController:
         return self.snapshot.error or self.operation_error
 
     def toggle(self):
+        """Ignore control while polling is unavailable, including direct callers."""
         if not self.can_toggle:
             return
         try:

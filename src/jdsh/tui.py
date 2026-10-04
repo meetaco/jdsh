@@ -21,12 +21,12 @@ from rich.progress_bar import ProgressBar
 from rich.text import Text
 from rich import box
 
-from . import utils
+from . import tui_runtime, utils
 from .stats import summarize_transfers, transfer_progress
+# Readable compatibility aliases; patch loop constants in tui_runtime.
 from .tui_runtime import (
     MIN_REFRESH_SECONDS as MIN_REFRESH_SECONDS,
     OPERATION_ERROR_SECONDS as OPERATION_ERROR_SECONDS,
-    poll_stats,
     run_loop,
 )
 
@@ -162,7 +162,11 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
 
 
 def _poll_stats(client):
-    return poll_stats(client)
+    """Compatibility helper; the loop calls tui_runtime.poll_stats directly.
+
+    Patch tui_runtime.poll_stats to replace polling in the running dashboard.
+    """
+    return tui_runtime.poll_stats(client)
 
 
 def run(client, *, console=None, keyboard=None, clock=None, sleep=None):

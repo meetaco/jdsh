@@ -1,4 +1,9 @@
-"""Compare TUI rendering/control/poll order with a trusted pre-refactor git ref."""
+"""Migration aid comparing TUI event order with a trusted pre-refactor git ref.
+
+Baseline tui.py executes against dependencies from the current checkout. This
+checks the loop extraction, not a complete isolated baseline environment. It is
+an opt-in migration check, not a permanent gate for intentional behavior changes.
+"""
 
 import argparse
 import subprocess
@@ -61,11 +66,11 @@ def trace(module, state, rate, poll_failures=(), toggle_failures=()):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--baseline", default="451684e", help="Trusted local pre-refactor git ref")
+    parser.add_argument("--baseline", required=True, help="Explicit trusted local pre-refactor git ref")
     args = parser.parse_args()
     baseline = types.ModuleType("jdsh._baseline_tui")
     baseline.__package__ = "jdsh"
-    source = subprocess.check_output(["git", "show", f"{args.baseline}:src/jdsh/tui.py"], text=True)
+    source = subprocess.check_output(["git", "show", "--end-of-options", f"{args.baseline}:src/jdsh/tui.py"], text=True)
     exec(compile(source, "baseline_tui.py", "exec"), baseline.__dict__)
     count = 0
     for state in ("STOPPED", "RUNNING", "DOWNLOADING"):

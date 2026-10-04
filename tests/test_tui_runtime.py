@@ -167,6 +167,9 @@ class TerminalLifecycleTests(unittest.TestCase):
         for error in (KeyboardInterrupt(), RuntimeError("unexpected")):
             with self.subTest(error=type(error).__name__):
                 keyboard, live, console = MagicMock(), MagicMock(), MagicMock()
+                exits = []
+                live.__exit__.side_effect = lambda *args: exits.append("live") or False
+                keyboard.__exit__.side_effect = lambda *args: exits.append("keyboard") or False
                 keyboard.__enter__.return_value.get_key.side_effect = error
                 timer, client = FakeTime(), make_client()
                 with patch.object(tui, "KeyboardInput", side_effect=AssertionError("use injected input")), \
@@ -178,6 +181,7 @@ class TerminalLifecycleTests(unittest.TestCase):
                         with self.assertRaisesRegex(RuntimeError, "unexpected"):
                             tui.run(client, console=console, keyboard=keyboard,
                                     clock=timer.clock, sleep=timer.sleep)
+                self.assertEqual(exits, ["live", "keyboard"])
                 keyboard.__exit__.assert_called_once()
                 live.__exit__.assert_called_once()
                 console.clear.assert_called_once()
