@@ -57,11 +57,17 @@ range, and the selected ID are shown so selection remains identifiable.
 | Ctrl+C | Quit and restore terminal settings |
 
 Rows scroll within each pane instead of cutting off after the first ten waiting
-links. Viewports use the terminal height at each redraw; use at least 18 rows.
+links. Viewports track terminal size between polls (checked every idle input
+tick); use at least 18 rows. Below 100 columns, ID cells show the final seven digits with
+a `...` prefix and the running table omits size/ETA to keep names/progress readable.
+The footer retains the full selected ID; shortened cell IDs are display-only.
 Selection follows the link ID across refreshes, reordering, and moves between
 panes. If the link disappears, the nearest remaining ordinal row is selected;
 empty panes have no selected ID. A temporary poll error does not discard the
-remembered selection. Each pane remembers its position when switching.
+remembered selection. Each pane remembers its selected ID and scroll position
+when switching.
+Terminals below 18 rows show guidance without changing viewport offsets.
+Standalone Esc is ignored; incomplete escape sequences expire after 150 ms.
 
 This is single-row navigation. The dashboard still shows running links and
 enabled unfinished links; finished/disabled links remain outside these views.

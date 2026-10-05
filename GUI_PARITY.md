@@ -95,8 +95,9 @@ in diagnostic JSON.
 
 Build the TUI on the same command/service layer rather than reimplementing
 JDownloader behavior. Row navigation now supports Up/Down, j/k, Tab, Page
-Up/Down and Home/End with ID-preserving selection and height-based viewports. Add selection, package hierarchy, details/diagnosis and
-action shortcuts only after the underlying CLI operations are complete.
+Up/Down and Home/End with ID-preserving selection and height-based viewports.
+Package hierarchy, details/diagnosis and action shortcuts remain pending and
+should use the underlying CLI operations.
 
 ## Diagnostic policy
 

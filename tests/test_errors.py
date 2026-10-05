@@ -1,6 +1,7 @@
 import contextlib
 import io
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from jdsh import cli, config, services, tui
@@ -160,6 +161,7 @@ class TUIErrorTests(unittest.TestCase):
         with patch.object(tui, 'Console'), patch.object(tui, 'Live'), \
              patch.object(tui, 'generate_layout') as render, patch.object(tui, 'KeyboardInput') as keyboard, \
              patch.object(tui.time, 'monotonic', return_value=0.0):
+            tui.Console.return_value.size = SimpleNamespace(width=100, height=25)
             keyboard.return_value.__enter__.return_value.get_key.side_effect = ['s', KeyboardInterrupt]
             tui.run(client)
         self.assertTrue(any(c.kwargs.get('override_status') == 'ERROR: start denied' for c in render.call_args_list))
@@ -172,6 +174,7 @@ class TUIErrorTests(unittest.TestCase):
         with patch.object(tui, 'Console'), patch.object(tui, 'Live'), \
              patch.object(tui, 'generate_layout'), patch.object(tui, 'KeyboardInput') as keyboard, \
              patch.object(tui.time, 'monotonic', return_value=0.0), patch.object(tui.time, 'sleep'):
+            tui.Console.return_value.size = SimpleNamespace(width=100, height=25)
             keyboard.return_value.__enter__.return_value.get_key.side_effect = ['s', KeyboardInterrupt]
             tui.run(client)
         client.toggle_state.assert_not_called()
