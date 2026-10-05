@@ -79,7 +79,7 @@ def _build_parser_with_commands():
     p_gr.add_argument("-d", "--detail", action="store_true", help="Show detailed link information")
 
     p_gr.add_argument("--search", metavar="TEXT", help="Case-insensitive link name substring")
-    p_gr.add_argument("--host", action="append", metavar="HOST", help="Exact host; repeat to match any host")
+    p_gr.add_argument("--host", action="append", metavar="HOST", help="Case-insensitive exact host (outer whitespace ignored); repeat to match any host")
     p_gr.add_argument("--availability", action="append", type=str.upper, choices=AVAILABILITIES, help="JD availability; repeated values match any")
     p_gr.add_argument("--package", action="append", type=_download_id, metavar="ID", help="LinkGrabber package ID; repeat for multiple packages")
     p_gr.add_argument("--job", action="append", type=_download_id, metavar="ID", help="Add job ID returned by jd add; repeat for multiple jobs")
@@ -151,7 +151,7 @@ def _normalize_argv(argv):
     A standalone -- terminates options; it cannot escape a file option value.
     """
     argv = list(argv)
-    if argv and argv[0] in SELECTION_OPTION_COMMANDS + ("confirm",):
+    if argv and argv[0] in (*SELECTION_OPTION_COMMANDS, "confirm"):
         options, positionals = [], []
         index = 1
         while index < len(argv):

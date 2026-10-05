@@ -89,7 +89,7 @@ class LinkGrabberSelectionTests(unittest.TestCase):
         for rows in ([{'uuid': 3}, {'uuid': False}], [{'uuid': 3}, {}]):
             device = MagicMock()
             device.linkgrabber.query_packages.return_value = rows
-            with self.assertRaises((ValueError, KeyError)):
+            with self.assertRaises((ValueError, ServiceError)):
                 services.confirm_grabber(device)
             device.linkgrabber.move_to_downloadlist.assert_not_called()
 
@@ -191,3 +191,62 @@ class LinkGrabberSelectionTests(unittest.TestCase):
         with self.assertRaises(ServiceError):
             cli.cmd_add(device, arguments.parse_args(['add', 'https://example.com']), console=Console(file=output))
         self.assertEqual(output.getvalue(), '')
+
+    def test_package_filter_normalizes_response_ids_without_changing_records(self):
+        rows = [{'uuid': 1, 'packageUUID': '3'}, {'uuid': 2, 'packageUUID': 3},
+                {'uuid': 3, 'packageUUID': 4}, {'uuid': 4},
+                {'uuid': 5, 'packageUUID': True}, {'uuid': 6, 'packageUUID': '3_0'}]
+        device = RecordingDevice(rows)
+        self.assertEqual(services.list_grabber_links(device, package_ids=[3]), rows[:2])
+        self.assertEqual(rows[0]['packageUUID'], '3')
+        self.assertEqual(device.requests[0][1][0]['packageUUIDs'], [3])
+        # The upstream response always includes packageUUID; no corresponding
+        # boolean request flag exists. Incomplete rows fail closed locally.
+        self.assertNotIn('packageUUID', device.requests[0][1][0])
+        device = RecordingDevice([{'uuid': 1}])
+        self.assertEqual(services.list_grabber_links(device, package_ids=[3]), [])
+        output = io.StringIO()
+        rendering.render_grabber(device.result, console=Console(file=output, width=100))
+        self.assertIn('UNKNOWN', output.getvalue())
+
+    def test_overview_renders_filter_placeholders_literally_offline(self):
+        output = io.StringIO()
+        with patch.object(cli.config, 'load_settings') as settings, patch.object(cli, 'JDClient') as client:
+            cli.main(['help'], console=Console(file=output, width=260))
+        self.assertIn('[filters]', output.getvalue())
+        self.assertIn('[filters/sort]', output.getvalue())
+        settings.assert_not_called()
+        client.assert_not_called()
+
+    def test_grabber_detail_panels_fit_narrow_console_and_preserve_raw_fields(self):
+        output = io.StringIO()
+        rendering.render_grabber([{'uuid': 1, 'name': 'file.zip', 'packageUUID': 3,
+                                   'url': '[blue]url', 'future': {'value': None}}],
+                                 detail=True, console=Console(file=output, width=80))
+        self.assertIn('LinkGrabber link 1', output.getvalue())
+        self.assertIn('[blue]url', output.getvalue())
+        self.assertIn('"future"', output.getvalue())
+        self.assertNotIn('Raw details', output.getvalue())
+        self.assertTrue(all(len(line) <= 80 for line in output.getvalue().splitlines()))
+
+    def test_invalid_all_package_response_is_clear_and_never_moves(self):
+        for response in (False, None, {}, [None], [{'name': 'package'}]):
+            device = MagicMock()
+            device.linkgrabber.query_packages.return_value = response
+            with self.assertRaisesRegex(ServiceError, 'LinkGrabber package'):
+                services.confirm_grabber(device)
+            device.linkgrabber.move_to_downloadlist.assert_not_called()
+
+    def test_host_outer_whitespace_is_ignored(self):
+        device = RecordingDevice([{'uuid': 1, 'host': 'EXAMPLE.com'}])
+        self.assertEqual(services.list_grabber_links(device, hosts=[' example.com ']), device.result)
+
+    def test_add_without_usable_job_id_explains_fallback(self):
+        for response in (None, {}, {'id': False}):
+            device = RecordingDevice(response)
+            output = io.StringIO()
+            cli.cmd_add(device, arguments.parse_args(['add', 'https://example.com']),
+                        console=Console(file=output, width=160))
+            self.assertIn('No usable add job ID was returned.', output.getvalue())
+            self.assertNotIn('Add job ID:', output.getvalue())
+            self.assertEqual(len(device.requests), 1)

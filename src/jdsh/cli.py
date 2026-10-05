@@ -88,7 +88,7 @@ def cmd_grabber(device, args, *, console=None):
     if getattr(args, "as_json", False):
         print(json.dumps(links, ensure_ascii=False, indent=2, sort_keys=True))
         return
-    filtered = options["search"] is not None or any(options[key] for key in ("hosts", "availability", "package_ids", "job_ids"))
+    filtered = options["search"] is not None or any(bool(options[key]) for key in ("hosts", "availability", "package_ids", "job_ids"))
     rendering.render_grabber(links, detail=detail, filtered=filtered, console=console)
 
 
@@ -103,6 +103,8 @@ def cmd_add(device, args, *, console=None):
 
     if job_id is not None:
         rendering.render_message(f"Add job ID: {job_id}. Inspect with 'jd grabber --job {job_id}'; crawling may still be in progress.", console=console)
+    else:
+        rendering.render_message("No usable add job ID was returned. Inspect entries with 'jd grabber'.", console=console)
 
 
 def cmd_confirm(device, args, *, console=None):

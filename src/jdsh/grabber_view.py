@@ -1,5 +1,6 @@
 """Filter LinkGrabber's availability values without download-state inference."""
 
+from .download_selection import download_id
 from .queue_view import normalize_search
 
 AVAILABILITIES = ("ONLINE", "OFFLINE", "UNKNOWN", "TEMP_UNKNOWN")
@@ -10,7 +11,7 @@ def filter_grabber_links(links, *, search=None, hosts=(), availability=(), packa
     if search is None and not hosts and not availability and not package_ids:
         return links
     needle = search.casefold() if search is not None else None
-    hosts = {host.casefold() for host in hosts}
+    hosts = {host.strip().casefold() for host in hosts}
     availability = {value.upper() for value in availability}
     packages = set(package_ids)
     result = []
@@ -22,7 +23,13 @@ def filter_grabber_links(links, *, search=None, hosts=(), availability=(), packa
         # Missing availability is not a server-provided UNKNOWN value.
         if availability and str(link.get("availability") or "").upper() not in availability:
             continue
-        if packages and link.get("packageUUID") not in packages:
-            continue
+        if packages:
+            try:
+                package_id = download_id(link.get("packageUUID"))
+            except ValueError:
+                # A malformed/missing parent is not evidence of a package match.
+                continue
+            if package_id not in packages:
+                continue
         result.append(link)
     return result

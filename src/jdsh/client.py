@@ -81,6 +81,9 @@ STATUS_LINK_STATE_QUERY = MappingProxyType({
     "finished": True,
 })
 
+# The official CrawledLinkQuery has no packageUUID boolean flag.
+# LinkCollectorAPIImplV2.toStorable always sets packageUUID in its response.
+# https://my.jdownloader.org/developers/ (CrawledLinkQuery / CrawledLink)
 GRABBER_LINK_STATE_QUERY = MappingProxyType({
     "name": True,
     "uuid": True,

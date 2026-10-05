@@ -80,7 +80,7 @@ def print_help(*, console=None):
     table.add_column("Description", style="white")
 
     def add_cmd(name, args, desc):
-        table.add_row(name, args, desc)
+        table.add_row(Text(name), Text(args), Text(desc))
     def add_section(name):
         table.add_row(Text(f"\n{name}", style="bold yellow"))
 
@@ -333,18 +333,18 @@ def render_grabber(links, detail=False, *, filtered=False, console=None):
     table = Table(title=f"Pending Links ({len(links)})", box=box.SIMPLE)
     for label in ("ID", "Package ID", "Enabled", "Availability", "Host", "Name"):
         table.add_column(label)
-    if detail:
-        table.add_column("Raw details")
     for link in links:
         enabled = link.get("enabled")
         row = [Text(str(link.get("uuid", "UNKNOWN"))), Text(str(link.get("packageUUID", "UNKNOWN"))),
                "YES" if enabled is True else "NO" if enabled is False else "UNKNOWN",
                Text(str(link.get("availability") or "NOT REPORTED")),
                Text(str(link.get("host") or "UNKNOWN")), Text(str(link.get("name") or ""))]
-        if detail:
-            row.append(Text(json.dumps(link, ensure_ascii=False, sort_keys=True)))
         table.add_row(*row)
     console.print(table)
+    if detail:
+        for link in links:
+            console.print(Panel(Text(json.dumps(link, ensure_ascii=False, indent=2, sort_keys=True)),
+                                title=Text(f"LinkGrabber link {link.get('uuid', 'UNKNOWN')}")))
     render_message("Use 'jd confirm ID' or 'jd confirm --package ID' to move specific Grabber entries. "
                    "Bare 'jd confirm' / 'jd confirm --all' moves ALL pending packages, regardless of listing filters. "
                    "Use 'jd start' to start or resume the controller; JD auto-start settings may also apply.", console=console)

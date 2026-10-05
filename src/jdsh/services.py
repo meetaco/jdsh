@@ -110,9 +110,15 @@ def confirm_grabber_selection(device, link_ids=(), package_ids=()):
 
 def confirm_grabber(device) -> int:
     """Legacy all-package operation: snapshot IDs and submit one move request."""
+    # uuid/name are set by CrawledPackageAPIStorableV2(pkg) unconditionally;
+    # CrawledPackageQuery has no uuid flag. Optional metadata stays unrequested.
     packages = device.linkgrabber.query_packages([{"startAt": 0, "maxResults": -1}])
+    if not isinstance(packages, list):
+        raise ServiceError("JDownloader returned an invalid LinkGrabber package list")
     if not packages:
         return 0
+    if any(not isinstance(package, dict) or "uuid" not in package for package in packages):
+        raise ServiceError("JDownloader returned a LinkGrabber package without a uuid")
     # Validate every returned ID before any mutation; do not silently omit a
     # malformed package and claim that all packages were submitted.
     selection = confirm_grabber_selection(device, package_ids=[package["uuid"] for package in packages])
