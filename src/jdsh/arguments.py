@@ -3,6 +3,7 @@
 import argparse
 from typing import Sequence
 
+from .grabber_view import AVAILABILITIES
 from .queue_options import LINK_STATES, SORT_KEYS
 from .download_selection import SELECTION_OPTION_COMMANDS, download_id
 from .download_values import nonblank_text, priority_value, rename_value, directory_value
@@ -74,17 +75,27 @@ def _build_parser_with_commands():
     )
     p_check.add_argument("--json", action="store_true", dest="as_json", help="Print check result as JSON")
 
-    p_gr = command("grabber", 'List pending links in LinkGrabber.')
+    p_gr = command("grabber", 'Inspect pending LinkGrabber links; filters only affect this listing.', allow_abbrev=False)
     p_gr.add_argument("-d", "--detail", action="store_true", help="Show detailed link information")
 
-    command("confirm", 'Move all pending packages to the download queue. Use jd start to start or resume the download controller.')
+    p_gr.add_argument("--search", metavar="TEXT", help="Case-insensitive link name substring")
+    p_gr.add_argument("--host", action="append", metavar="HOST", help="Exact host; repeat to match any host")
+    p_gr.add_argument("--availability", action="append", type=str.upper, choices=AVAILABILITIES, help="JD availability; repeated values match any")
+    p_gr.add_argument("--package", action="append", type=_download_id, metavar="ID", help="LinkGrabber package ID; repeat for multiple packages")
+    p_gr.add_argument("--job", action="append", type=_download_id, metavar="ID", help="Add job ID returned by jd add; repeat for multiple jobs")
+    p_gr.add_argument("--json", action="store_true", dest="as_json", help="Print queried link records as JSON (includes URLs and detail fields)")
+
+    p_confirm = command("confirm", 'Move selected LinkGrabber links/packages to the queue. With no IDs, move all pending packages (legacy behavior). Does not explicitly start the controller; JD auto-start settings may apply.', allow_abbrev=False)
+    p_confirm.add_argument("uuids", nargs="*", type=_download_id, metavar="ID", help="LinkGrabber link ID shown by jd grabber")
+    p_confirm.add_argument("--package", action="append", type=_download_id, metavar="ID", help="LinkGrabber package ID shown by jd grabber; repeat for multiple packages")
+    p_confirm.add_argument("--all", action="store_true", dest="all_links", help="Explicitly select all pending packages; cannot be combined with IDs")
     command("start", 'Start or resume the download controller.')
     command("stop", 'Stop the download controller.')
     command("clear", 'Remove finished links from the queue; downloaded files are kept.')
     command("version", 'Show JDSH and JDownloader core versions.')
     command("help", 'Show the command overview.')
 
-    p_add = command("add", 'Add URLs to LinkGrabber from arguments, a UTF-8 file, or the macOS clipboard. Then use jd confirm to move pending links to the queue and jd start to start or resume the download controller.')
+    p_add = command("add", 'Add URLs to LinkGrabber from arguments, a UTF-8 file, or the macOS clipboard. Inspect jd grabber, then use jd confirm ID or jd confirm --package ID. Bare jd confirm moves all pending packages. Use jd start to start or resume the controller.')
     p_add.add_argument("--clipboard", action="store_true", help="Add links from the macOS clipboard")
     p_add.add_argument("-f", "--file", metavar="PATH", help="Read a UTF-8 text file containing one URL per line")
     p_add.add_argument("urls", nargs="*", metavar="URL", help="URLs to add; can be combined with --file and --clipboard")
@@ -140,7 +151,7 @@ def _normalize_argv(argv):
     A standalone -- terminates options; it cannot escape a file option value.
     """
     argv = list(argv)
-    if argv and argv[0] in SELECTION_OPTION_COMMANDS:
+    if argv and argv[0] in SELECTION_OPTION_COMMANDS + ("confirm",):
         options, positionals = [], []
         index = 1
         while index < len(argv):
@@ -159,7 +170,7 @@ def _normalize_argv(argv):
                 options.extend(argv[index:index + 2])
                 index += 2
                 continue
-            if arg == "--yes" and argv[0] == "reset":
+            if (arg == "--yes" and argv[0] == "reset") or (arg == "--all" and argv[0] == "confirm"):
                 options.append(arg)
             elif arg.startswith("--package="):
                 options.append(arg)
@@ -204,6 +215,10 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     args = parser.parse_args(_normalize_argv(argv))
     if args.command in SELECTION_OPTION_COMMANDS and not args.uuids and not args.package:
         commands[args.command].error("requires download link IDs or --package ID")
+    if args.command == "confirm" and args.all_links and (args.uuids or args.package):
+        commands["confirm"].error("--all cannot be combined with link IDs or --package ID")
+    if args.command == "grabber" and any(not host.strip() for host in (args.host or ())):
+        commands["grabber"].error("--host requires a nonempty host name")
     if args.command == "reset" and not args.yes:
         commands["reset"].error("reset can delete existing files and discard progress; supply --yes to acknowledge")
     if args.command == "rename":

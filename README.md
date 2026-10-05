@@ -55,9 +55,9 @@ jd
 │    show                     <id> [--json]            Show raw link, package, and URL details                                                                         │
 │    why                      <id> [--json]            Explain why a download is not progressing                                                                       │
 │    check                    <id> | --all [--json]    Force-refresh link availability                                                                                 │
-│    grabber                  [-d]                     List pending links inside LinkGrabber                                                                           │
+│    grabber                  [-d] [--json] [filters]               Inspect pending links; see jd grabber --help                                                       │
 │    add                      [<url>...] [--clipboard] [-f <path>] Add links to LinkGrabber                                                                            │
-│    confirm                                           Move all pending links to Queue                                                                                 │
+│    confirm                  [IDs] [--package ID] | --all          Move selected entries; no IDs means all                                                            │
 │    remove (rm)              [<id>...] [--package <id>]   Remove selected links/packages from queue                                                                   │
 │                                                                                                                                                                      │
 │    Controls                                                                                                                                                          │
@@ -144,6 +144,55 @@ original is kept. If removal fails, JDSH reports that the replacement was added
 and both entries may remain; inspect `jd ls` and `jd grabber` before retrying.
 The replacement is initially in LinkGrabber, so this operation does not prove
 that its download will succeed.
+
+### Inspect and confirm LinkGrabber entries
+
+```bash
+jd add "https://example.com/file.zip"     # prints Add job ID when JD returns one
+jd grabber --job 123456789                # inspect links from that add job
+jd grabber --search archive --host example.com --availability online
+jd grabber --package 111111111 -d
+jd grabber --json
+jd confirm 123456789 --package 111111111
+jd confirm --all
+```
+
+`grabber` shows link and parent package IDs, enabled state, availability, host,
+and name. Missing availability is shown as `NOT REPORTED`, not inferred as JD's
+`UNKNOWN`. `--search` matches link names case-insensitively; `--host` matches an
+exact host. `--availability` accepts `ONLINE`, `OFFLINE`, `UNKNOWN`, and
+`TEMP_UNKNOWN`, case-insensitively. Repeat host/availability/package/job options
+to match any value within that filter; different filters intersect. A blank
+search is ignored. Empty filtered output means no matches, not an empty grabber.
+`-d` shows all queried fields, including URL, size, comment, priority, status,
+and variants. `--json` emits only a JSON array of queried records, includes the
+same detail fields, and preserves additional fields returned by JD. These views
+use LinkGrabber availability rather than download-queue diagnostic states.
+
+`add` requests JD job association (`assignJobID: true`) and prints the server's
+job ID when available. Use `grabber --job ID` to inspect that add operation;
+JDSH does not guess its links from names or queue differences. Crawling is
+asynchronous, so an empty result can precede link discovery; re-run the listing
+later. Older servers may omit the job ID; use the other listing filters then.
+No automatic polling, confirmation, or starting is added.
+
+`confirm` accepts LinkGrabber link IDs and repeatable `--package ID`, including
+mixed selections. IDs use the same strict ASCII positive signed-64-bit format
+as download actions, and duplicates are submitted once per namespace. A package
+selection includes its children, including ones hidden by listing filters.
+LinkGrabber IDs belong to pending entries; use `jd grabber` rather than `jd ls` to find them.
+For compatibility, **bare `jd confirm` still moves all pending packages**;
+`--all` expresses that scope explicitly and cannot be combined with IDs.
+**Listing filters never limit a later confirm command.**
+
+Confirmation submits one move request without retry and reports submitted ID
+counts, not completed moves or affected links. Missing/stale IDs may be ignored
+upstream. The all-package operation first snapshots package IDs (including
+packages hidden by listing filters); packages arriving afterward require another
+confirmation. JDSH does not explicitly start the controller, but JD auto-start
+settings can apply when links enter the queue. Inspect `jd ls` afterward and use
+`jd start` when needed. Human-readable confirm output now says `Submitted`
+instead of claiming the move has finished; scripts parsing it must update.
 
 ### Reset, rename, priority, and destination
 

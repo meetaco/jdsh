@@ -84,7 +84,11 @@ STATUS_LINK_STATE_QUERY = MappingProxyType({
 GRABBER_LINK_STATE_QUERY = MappingProxyType({
     "name": True,
     "uuid": True,
-    "url": True,
+    "host": True,
+    "enabled": True,
+    "availability": True,
+    "startAt": 0,
+    "maxResults": -1,
 })
 
 # Keep the high-frequency TUI poll limited to fields it actually renders.
