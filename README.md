@@ -58,9 +58,12 @@ jd
 │    grabber                  [-d]                     List pending links inside LinkGrabber                                                                           │
 │    add                      [<url>...] [--clipboard] [-f <path>] Add links to LinkGrabber                                                                            │
 │    confirm                                           Move all pending links to Queue                                                                                 │
-│    remove (rm)              <uuid>...                Remove items by ID                                                                                              │
+│    remove (rm)              [<id>...] [--package <id>]   Remove selected links/packages from queue                                                                   │
 │                                                                                                                                                                      │
 │    Controls                                                                                                                                                          │
+│    enable / disable         [<id>...] [--package <id>]   Enable/disable selected downloads                                                                           │
+│    resume                   [<id>...] [--package <id>]   Request resume for selected downloads                                                                       │
+│    force                    [<id>...] [--package <id>]   Request forced download for selection                                                                       │
 │    start                                             Start/Resume downloads                                                                                          │
 │    stop                                              Stop downloads                                                                                                  │
 │    clear                                             Remove finished items from list                                                                                 │
@@ -94,6 +97,49 @@ jd
   jd show 123456789
   jd show 123456789 --json
 ```
+
+### Acting on selected downloads
+
+```bash
+jd disable 123456789 987654321
+jd enable --package 111111111
+jd resume 123456789 --package 111111111
+jd force 123456789
+jd rm --package 111111111
+```
+
+`enable`, `disable`, `resume`, `force`, and `remove` (alias `rm`) accept download
+link IDs as positional arguments and package IDs with `--package ID`. Find link
+IDs with `jd ls` and package IDs with `jd ls --packages`. Repeat `--package` for
+multiple packages, or combine it with link IDs; option order does not matter.
+A package selection applies to its download links. These commands operate on
+the download queue, not LinkGrabber. At least one ID is required; IDs must be
+positive integers within the signed 64-bit range, written with ASCII digits
+`0`–`9` only. Signs, whitespace, underscores, and non-ASCII digits are rejected. Duplicate IDs are submitted
+once per kind. Empty selection never means “all”.
+
+`enable`/`disable` change the enabled state. `resume` delegates recovery/resume
+behavior to JDownloader via `resumeLinks`; whether a link can resume depends
+on JDownloader and the host. These commands do not explicitly start the global
+controller; use `jd start` when
+needed. `force` requests a forced download and may start downloads according to
+JDownloader's behavior. `remove` only removes queue entries; downloaded files
+are kept. Commands report submitted link/package ID counts, not affected-link
+counts: a package can contain many links, selections can overlap, and missing
+or stale IDs may be ignored by JDownloader. Acceptance does not guarantee that
+a download can progress; inspect `jd ls` or `jd why <id>` afterward.
+
+`--package` must be spelled in full; abbreviated options such as `--pack` are
+rejected. `remove` now reports submitted link/package ID counts instead of the
+old `Removed N items.` message. Scripts parsing that human-readable message
+must update their handling.
+
+`jd replace ID URL` validates the ID before any API operation, adds the new URL
+with autostart, and then removes the original queue entry. If adding fails, the
+original is kept. If removal fails, JDSH reports that the replacement was added
+and both entries may remain; inspect `jd ls` and `jd grabber` before retrying.
+The replacement is initially in LinkGrabber, so this operation does not prove
+that its download will succeed.
 
 ### Browsing the download queue
 

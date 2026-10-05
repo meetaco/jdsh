@@ -17,6 +17,7 @@ from .client import (
 # available_status preserves the former CLI helper: non-dict states return None.
 from .diagnostics import available_status, diagnose_link
 from .errors import ServiceError
+from .download_selection import download_id, select_downloads
 from .queue_view import filter_links, normalize_search, sort_rows, summarize_packages
 
 CHECK_TIMEOUT_SECONDS = 30.0
@@ -81,8 +82,27 @@ def confirm_grabber(device) -> int:
     return len(packages)
 
 
-def remove_downloads(device, link_ids: List[str]) -> None:
-    device.downloads.remove_links(link_ids, [])
+def apply_download_action(device, action, link_ids=(), package_ids=()):
+    """Submit one explicit request; returned selection counts are not effect counts."""
+    if action not in ("enable", "disable", "resume", "force", "remove"):
+        raise ValueError(f"Unsupported download action: {action}")
+    selection = select_downloads(link_ids, package_ids)
+    links, packages = list(selection.link_ids), list(selection.package_ids)
+    if action in ("enable", "disable"):
+        result = device.downloads.set_enabled(action == "enable", links, packages)
+    elif action == "resume":
+        result = device.action("/downloadsV2/resumeLinks", [links, packages])
+    elif action == "force":
+        result = device.downloads.force_download(links, packages)
+    else:
+        result = device.downloads.remove_links(links, packages)
+    if result is False:
+        raise ServiceError(f"JDownloader did not accept the {action} request")
+    return selection
+
+
+def remove_downloads(device, link_ids, package_ids=()):
+    return apply_download_action(device, "remove", link_ids, package_ids)
 
 
 def start_downloads(device) -> None:
@@ -260,17 +280,22 @@ class ReplacementError(ServiceError):
 
 
 def replace_download(device, link_id, url):
-    """Preserve removal/add order and report partial success explicitly."""
+    """Validate before any mutation; add the replacement before removing original."""
+    link_id = download_id(link_id)
     try:
-        device.downloads.remove_links([link_id], [])
-    except Exception as e:
-        raise ReplacementError(f"Failed to remove original link {link_id}: {e}") from e
-    try:
-        device.linkgrabber.add_links([{
+        result = device.linkgrabber.add_links([{
             "links": url, "autostart": True, "packageName": f"Rep_{link_id}",
         }])
+        if result is False:
+            raise ServiceError("JDownloader did not accept the replacement URL")
     except Exception as e:
         raise ReplacementError(
-            f"Original link {link_id} was removed, but adding the replacement failed: {e}. "
-            "Add the replacement URL again with 'jd add'."
+            f"Failed to add replacement for link {link_id}; original was not removed: {e}"
+        ) from e
+    try:
+        remove_downloads(device, [link_id])
+    except Exception as e:
+        raise ReplacementError(
+            f"Replacement was added, but removing original link {link_id} failed: {e}. "
+            "Both entries may remain; inspect 'jd ls' and 'jd grabber' before retrying."
         ) from e

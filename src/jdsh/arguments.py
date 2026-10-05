@@ -4,15 +4,29 @@ import argparse
 from typing import Sequence
 
 from .queue_options import LINK_STATES, SORT_KEYS
+from .download_selection import SELECTED_COMMANDS, download_id
 
 
-def _build_parser():
+def _download_id(value):
+    try:
+        return download_id(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
+
+
+def _build_parser_with_commands():
     parser = argparse.ArgumentParser(prog="jd", add_help=False)
     # The CLI handles no-command help and no-argument TUI startup separately.
     sub = parser.add_subparsers(dest="command", required=False)
 
+    commands = {}
+
     def command(name, description, **kwargs):
-        return sub.add_parser(name, description=description, help=description, **kwargs)
+        target = sub.add_parser(name, description=description, help=description, **kwargs)
+        commands[name] = target
+        for alias in kwargs.get("aliases", ()):
+            commands[alias] = target
+        return target
 
     command("status", "Show a static snapshot of the download queue.")
 
@@ -58,22 +72,66 @@ def _build_parser():
     p_add.add_argument("-f", "--file", metavar="PATH", help="Read a UTF-8 text file containing one URL per line")
     p_add.add_argument("urls", nargs="*", metavar="URL", help="URLs to add; can be combined with --file and --clipboard")
 
-    p_rm = command("remove", 'Remove the specified download links from the queue.', aliases=["rm"])
-    p_rm.add_argument("uuids", nargs="+", metavar="ID", help="Download link IDs shown by jd ls")
+    def selection_options(target):
+        target.allow_abbrev = False
+        target.add_argument("uuids", nargs="*", type=_download_id, metavar="ID", help="Download link IDs shown by jd ls")
+        target.add_argument("--package", action="append", type=_download_id, default=None, metavar="ID", help="Package ID shown by jd ls --packages; repeat for multiple packages")
+
+    descriptions = {
+        "enable": "Enable selected download links or packages. Does not start the controller.",
+        "disable": "Disable selected download links or packages.",
+        "resume": "Ask JDownloader to resume selected links or packages. Does not explicitly start the controller.",
+        "force": "Ask JDownloader to force selected links or packages to download; this may start downloads.",
+    }
+    for name, description in descriptions.items():
+        selection_options(command(name, description))
+    p_rm = command("remove", "Remove selected links or packages from the download queue; downloaded files are kept.", aliases=["rm"])
+    selection_options(p_rm)
 
     p_rep = command("replace", 'Add a replacement URL with autostart, then remove the original link.')
-    p_rep.add_argument("uuid", metavar="ID", help="Original download link ID shown by jd ls")
+    p_rep.add_argument("uuid", type=_download_id, metavar="ID", help="Original download link ID shown by jd ls")
     p_rep.add_argument("url", metavar="URL", help="Replacement URL")
-    return parser
+    return parser, commands
+
+
+def _build_parser():
+    return _build_parser_with_commands()[0]
 
 
 def _normalize_argv(argv):
-    """Move add's options before positionals, preserving option values and --.
+    """Move supported input/selection options before positionals, preserving --.
 
     For hyphen-prefixed file names use --file=-name.txt or ./-name.txt.
     A standalone -- terminates options; it cannot escape a file option value.
     """
     argv = list(argv)
+    if argv and argv[0] in SELECTED_COMMANDS:
+        options, positionals = [], []
+        index = 1
+        while index < len(argv):
+            arg = argv[index]
+            if arg == "--":
+                positionals.extend(argv[index:])
+                break
+            if arg == "--package":
+                if index + 1 >= len(argv):
+                    return argv
+                value = argv[index + 1]
+                # Let negative decimal IDs reach the validator; preserve real
+                # option tokens so argparse can report a missing value.
+                if value.startswith("-") and not (value[1:].isascii() and value[1:].isdecimal()):
+                    return argv
+                options.extend(argv[index:index + 2])
+                index += 2
+                continue
+            if arg.startswith("--package="):
+                options.append(arg)
+            else:
+                # This bucket only preserves token order. Help/unknown options
+                # remain options for argparse; do not consume them as IDs here.
+                positionals.append(arg)
+            index += 1
+        return [argv[0]] + options + positionals
     if not argv or argv[0] != "add":
         return argv
     options = []
@@ -105,8 +163,10 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     Invalid arguments retain argparse stderr output and SystemExit(2). The
     CLI entry point handles global help and no-argument TUI startup separately.
     """
-    parser = _build_parser()
+    parser, commands = _build_parser_with_commands()
     args = parser.parse_args(_normalize_argv(argv))
+    if args.command in SELECTED_COMMANDS and not args.uuids and not args.package:
+        commands[args.command].error("requires download link IDs or --package ID")
     if args.command in ("list", "ls"):
         if any(not host.strip() for host in (args.host or ())):
             parser.error("--host requires a nonempty host name")

@@ -105,7 +105,7 @@ class OtherArgsTests(unittest.TestCase):
         self.assertTrue(args.detail)
         args = arguments.parse_args(["rm", "1", "2"])
         self.assertEqual(args.command, "rm")
-        self.assertEqual(args.uuids, ["1", "2"])
+        self.assertEqual(args.uuids, [1, 2])
 
     def test_invalid_integer_ids_fail_with_exit_two(self):
         for command in ("show", "why", "check"):
