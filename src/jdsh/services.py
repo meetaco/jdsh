@@ -17,6 +17,7 @@ from .client import (
 # available_status preserves the former CLI helper: non-dict states return None.
 from .diagnostics import available_status, diagnose_link
 from .errors import ServiceError
+from .queue_view import filter_links, normalize_search, sort_rows, summarize_packages
 
 CHECK_TIMEOUT_SECONDS = 30.0
 CHECK_POLL_INTERVAL_SECONDS = 0.1
@@ -32,9 +33,32 @@ def download_status(device) -> Tuple[str, List[Dict[str, Any]]]:
     return state, links
 
 
-def list_downloads(device, *, detail: bool = False) -> List[Dict[str, Any]]:
+def list_downloads(device, *, detail: bool = False, search=None, states=(),
+                   hosts=(), sort=None, reverse=False) -> List[Dict[str, Any]]:
+    search = normalize_search(search)
     query = DOWNLOAD_LINK_STATE_QUERY if detail else LIST_LINK_STATE_QUERY
-    return device.downloads.query_links([query.copy()])
+    query = query.copy()
+    if search is not None or states or hosts or sort is not None:
+        query.update(startAt=0, maxResults=-1)
+    links = device.downloads.query_links([query])
+    return sort_rows(filter_links(links, search=search, states=states, hosts=hosts),
+                     sort=sort, reverse=reverse)
+
+
+def list_download_packages(device, *, search=None, states=(), hosts=(),
+                           sort=None, reverse=False) -> List[Dict[str, Any]]:
+    query = dict(LIST_LINK_STATE_QUERY, startAt=0, maxResults=-1)
+    links = device.downloads.query_links([query])
+    if not links:
+        return []
+    # Names and IDs are always returned by queryPackages; request all metadata
+    # rows without fetching unrelated optional fields such as comments or paths.
+    packages = device.downloads.query_packages([{"startAt": 0, "maxResults": -1}])
+    names = {pkg["uuid"]: pkg.get("name") for pkg in packages if pkg.get("uuid") is not None}
+    matched = filter_links(links, search=search, states=states, hosts=hosts,
+                           package_names=names)
+    return sort_rows(summarize_packages(links, matched, names), sort=sort,
+                     reverse=reverse, packages=True)
 
 
 def list_grabber_links(device) -> List[Dict[str, Any]]:

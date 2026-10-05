@@ -89,7 +89,7 @@ def print_help(*, console=None):
     add_cmd("status", "", "Show a static snapshot of the queue")
 
     add_section("Queue Management")
-    add_cmd("list (ls)", "[-d]", "List downloads with availability and reason")
+    add_cmd("list (ls)", "[-d] [--packages] [filters/sort]", "List downloads; use jd ls --help for search, filters, and sorting")
     add_cmd("show", "<id> [--json]", "Show raw link, package, URL, and diagnosis details")
     add_cmd("why", "<id> [--json]", "Explain why a download is not progressing")
     add_cmd("check", "<id> | --all [--json]", "Force-refresh link availability")
@@ -258,10 +258,10 @@ def render_check(payload, *, console=None):
     console.print(table)
 
 
-def render_list(links, detail=False, *, console=None):
+def render_list(links, detail=False, *, filtered=False, console=None):
     console = Console() if console is None else console
     if not links:
-        render_message("Download queue is empty.", console=console)
+        render_message("No downloads match the filters." if filtered else "Download queue is empty.", console=console)
         return
     if detail:
         for link in links:
@@ -296,6 +296,26 @@ def render_list(links, detail=False, *, console=None):
                 Text(str(link['name'])),
             )
         console.print(table)
+
+
+def render_packages(packages, *, filtered=False, console=None):
+    console = Console() if console is None else console
+    if not packages:
+        render_message("No downloads match the filters." if filtered else "Download queue is empty.", console=console)
+        return
+    table = Table(title="Packages (sizes and states describe matched links)", box=box.SIMPLE_HEAD)
+    for name in ("Package ID", "Name", "Links matched/total", "Done/Total", "States", "Hosts"):
+        table.add_column(name, no_wrap=name == "Package ID")
+    for package in packages:
+        states = ", ".join(f"{state}: {count}" for state, count in sorted(package["states"].items()))
+        table.add_row(
+            str(package["uuid"]) if package["uuid"] is not None else "UNKNOWN",
+            Text(str(package["name"]) if package["name"] is not None else "Unknown package name"),
+            f"{package['matchedCount']}/{package['linkCount']}",
+            f"{_raw_size(package['bytesLoaded'])}/{_raw_size(package['bytesTotal'])}",
+            states, Text(", ".join(package["hosts"]) or "UNKNOWN"),
+        )
+    console.print(table)
 
 
 def render_grabber(links, detail=False, *, console=None):

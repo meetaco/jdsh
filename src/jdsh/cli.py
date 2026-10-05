@@ -6,6 +6,7 @@ import sys
 
 from . import arguments, config, rendering, services, tui, url_inputs
 from .errors import JDShError
+from .queue_view import normalize_search
 from .client import JDClient
 
 
@@ -58,8 +59,22 @@ def cmd_why(device, args, *, console=None):
 
 
 def cmd_list(device, args, *, console=None):
-    links = services.list_downloads(device, detail=args.detail)
-    rendering.render_list(links, detail=args.detail, console=console)
+    # Accept older embedded callers whose namespace only has the detail flag.
+    detail = getattr(args, "detail", False)
+    options = {
+        "search": normalize_search(getattr(args, "search", None)),
+        "states": getattr(args, "state", None) or (),
+        "hosts": getattr(args, "host", None) or (),
+        "sort": getattr(args, "sort", None),
+        "reverse": getattr(args, "reverse", False),
+    }
+    filtered = options["search"] is not None or bool(options["states"] or options["hosts"])
+    if getattr(args, "packages", False):
+        packages = services.list_download_packages(device, **options)
+        rendering.render_packages(packages, filtered=filtered, console=console)
+    else:
+        links = services.list_downloads(device, detail=detail, **options)
+        rendering.render_list(links, detail=detail, filtered=filtered, console=console)
 
 
 def cmd_grabber(device, args, *, console=None):

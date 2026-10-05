@@ -60,7 +60,7 @@ Legend:
 - [x] Add a conservative diagnostic model with explicit provenance.
 - [x] Surface state, availability and reason in the default list.
 - [x] Add `jd why <id>`.
-- [ ] Add package-oriented queue view and filters/sorting.
+- [x] Add package-oriented queue view and filters/sorting (`jd ls --packages`, `--search`, `--state`, `--host`, `--sort`).
 - [ ] Improve TUI state/diagnosis visibility.
 
 ### Phase 2 — download actions
