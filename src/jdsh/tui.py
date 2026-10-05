@@ -97,8 +97,34 @@ class KeyboardInput:
         return self._next_key() if self.pending else None
 
 
+def _header_panel(grid, border_color, health=None, health_style=None):
+    return Panel(grid, title="JDownloader Panel",
+                 subtitle=Text(health, style=health_style, no_wrap=True, overflow="ellipsis") if health else None,
+                 border_style=border_color, box=box.ROUNDED)
+
+
+class RefreshHeader:
+    """Render age on Rich's refresh thread even while the input thread is polling.
+
+    Only read the captured snapshot/clock. Row selection and API calls remain on
+    the input thread; no shared Navigation or Layout is mutated here.
+    """
+
+    def __init__(self, grid, border_color, snapshot, clock):
+        self.grid, self.border_color = grid, border_color
+        self.snapshot, self.clock = snapshot, clock
+
+    def __rich_console__(self, console, options):
+        health = tui_runtime.refresh_status(self.snapshot, self.clock())
+        style = "green" if self.snapshot.last_success_at is not None and self.snapshot.error is None else "yellow"
+        # Preserve the Layout's height when delegating; yielding a renderable
+        # directly makes Rich reset height and may clip the subtitle off-screen.
+        yield from console.render(_header_panel(self.grid, self.border_color, health, style), options)
+
+
 def generate_layout(state, running_links, enabled_unfinished_links, override_status=None,
-                    *, navigation=None, height=25, width=100):
+                    *, navigation=None, height=25, width=100, refresh_status=None,
+                    refresh_snapshot=None, refresh_clock=None):
     if height < MIN_TERMINAL_ROWS:
         return Panel(Text("Terminal too short: use at least 18 rows. Ctrl+C quits."), border_style="red")
     # Render transient poll failures with empty panes without changing the saved selection.
@@ -147,7 +173,10 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
         f"[dim]Running left: [/dim] [yellow]{utils.human_size(summary.remaining)}[/]"
     )
 
-    header = Panel(grid, title="JDownloader Panel", border_style=border_color, box=box.ROUNDED)
+    header = _header_panel(grid, border_color, refresh_status) if refresh_snapshot is None else RefreshHeader(
+        grid, border_color, refresh_snapshot,
+        time.monotonic if refresh_clock is None else refresh_clock,
+    )
 
     # Running links: compact mode keeps the name/progress usable at 80 columns.
     compact = width < 100
@@ -258,12 +287,13 @@ def run(client, *, console=None, keyboard=None, clock=None, sleep=None):
                     snapshot.state, snapshot.running_links, snapshot.enabled_unfinished_links,
                     override_status=override_status, navigation=navigation,
                     height=size.height, width=size.width,
+                    refresh_snapshot=snapshot, refresh_clock=clock,
                 ))
 
-            def check_resize(snapshot, override_status):
+            def on_idle_refresh(snapshot, override_status):
                 if console.size != last_size[0]:
                     render(snapshot, override_status)
 
-            run_loop(client, get_key=kbd.get_key, render=render, clock=clock, sleep=sleep, handle_key=navigation.handle_key, on_idle=check_resize)
+            run_loop(client, get_key=kbd.get_key, render=render, clock=clock, sleep=sleep, handle_key=navigation.handle_key, on_idle=on_idle_refresh)
     except KeyboardInterrupt:
         pass

@@ -20,6 +20,24 @@ class Snapshot:
     running_links: List[dict]
     enabled_unfinished_links: List[dict]
     error: Optional[str] = None
+    last_success_at: Optional[float] = None
+    consecutive_failures: int = 0
+
+
+def refresh_status(snapshot, now):
+    """Describe poll health using monotonic elapsed time, not download state."""
+    if snapshot.last_success_at is None:
+        updated = "No successful refresh yet"
+    else:
+        age = max(0, int(now - snapshot.last_success_at))
+        updated = f"Last success: {age}s ago"
+    if snapshot.error is not None:
+        count = snapshot.consecutive_failures
+        failures = "failure" if count == 1 else "failures"
+        return f"Retrying ({count} {failures}) | {updated}"
+    if snapshot.last_success_at is None:
+        return f"Connecting | {updated}"
+    return f"Live | {updated}"
 
 
 def poll_stats(client):
@@ -43,9 +61,14 @@ class DashboardController:
 
     def poll(self):
         state, running, unfinished, error = poll_stats(self.client)
+        previous = self.snapshot
+        # Timestamp completion: a slow request must not make a fresh result old.
+        last_success = self.clock() if error is None else previous.last_success_at
         self.snapshot = Snapshot(
             state=state, running_links=running,
             enabled_unfinished_links=unfinished, error=error,
+            last_success_at=last_success,
+            consecutive_failures=previous.consecutive_failures + 1 if error is not None else 0,
         )
 
     def expire_error(self, now):
