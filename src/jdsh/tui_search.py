@@ -16,6 +16,8 @@ class Search:
         self.editing = True
 
     def handle_key(self, key):
+        if key == '\x03':
+            raise KeyboardInterrupt
         if not self.editing or key is None:
             return False
         if key in ('escape', '\x1b'):
@@ -43,4 +45,7 @@ class Search:
             tail = '...' + tail
         draft = Text('Search: /' + tail + '_')
         draft.truncate(max(1, width), overflow='ellipsis')
-        return Text.assemble(draft, '\nEnter Apply | Esc Cancel | Backspace Delete | Ctrl+U Clear | ^C Quit')
+        help_text = Text('Enter Apply | Esc Cancel | Backspace Delete | Ctrl+U Clear | ^C Quit')
+        help_text.truncate(max(1, width), overflow='ellipsis')
+        return Text.assemble(draft, '\n', help_text,
+                             no_wrap=True, overflow='ellipsis')

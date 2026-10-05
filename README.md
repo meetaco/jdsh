@@ -84,7 +84,14 @@ While editing, command letters and navigation keys do not execute queue or
 controller actions. Ctrl+C still quits; Ctrl+U and backspace are available. Search
 input is limited to 256 printable characters. POSIX UTF-8 input is buffered across
 partial reads; a standalone Esc is recognized after the existing 150ms escape
-sequence timeout. Search editing remains available during polling errors; pane
+sequence timeout. A prompt ESC+character is an ignored Alt/Meta event and does
+not cancel editing or execute commands. Invalid UTF-8 bytes are discarded.
+Windows getwch surrogate pairs are combined, but that API cannot distinguish the
+literal character `à` from its extended-key prefix. Full Unicode input is therefore
+supported on POSIX; Windows input retains this documented limitation and has only
+simulated tests, not real-console validation. Multi-line pastes use their first
+newline as Enter; bracketed paste mode and grapheme-cluster deletion are not
+supported. Backspace deletes one Unicode code point. Search editing remains available during polling errors; pane
 navigation and controller actions still require recovered status polling. Close
 details with `q` before starting a search.
 

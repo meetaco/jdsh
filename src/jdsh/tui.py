@@ -50,17 +50,30 @@ class KeyboardInput:
         self.decoder = KeyDecoder()
         self.pending = deque()
         self.windows_prefix = False
-        self.utf8 = codecs.getincrementaldecoder('utf-8')(errors='replace')
+        self.utf8 = codecs.getincrementaldecoder('utf-8')(errors='ignore')
+        self.windows_surrogate = None
 
     def __enter__(self):
+        self.pending.clear()
+        self.decoder.reset()
+        self.utf8.reset()
+        self.windows_prefix = False
+        self.windows_surrogate = None
         if termios:
             self.old_settings = termios.tcgetattr(sys.stdin)
             tty.setcbreak(sys.stdin.fileno())
         return self
 
     def __exit__(self, type, value, traceback):
-        if termios:
-            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
+        try:
+            if termios:
+                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
+        finally:
+            self.utf8.reset()
+            self.decoder.reset()
+            self.pending.clear()
+            self.windows_prefix = False
+            self.windows_surrogate = None
 
     def _next_key(self):
         key = self.pending.popleft()
@@ -88,6 +101,14 @@ class KeyboardInput:
                 self.pending.extend(self.decoder.feed(self.utf8.decode(chunk)))
         elif msvcrt is not None and msvcrt.kbhit():
             key = msvcrt.getwch()
+            if self.windows_surrogate is not None:
+                high = self.windows_surrogate
+                self.windows_surrogate = None
+                if 0xDC00 <= ord(key) <= 0xDFFF:
+                    key = chr(0x10000 + ((ord(high) - 0xD800) << 10) + ord(key) - 0xDC00)
+            if not self.windows_prefix and 0xD800 <= ord(key) <= 0xDBFF:
+                self.windows_surrogate = key
+                return None
             if self.windows_prefix:
                 self.windows_prefix = False
                 decoded = WINDOWS_KEYS.get(key)
@@ -99,7 +120,7 @@ class KeyboardInput:
             elif key in ("\x00", "\xe0"):
                 self.windows_prefix = True
             else:
-                self.pending.append(key)
+                self.pending.extend(self.decoder.feed(key))
         return self._next_key() if self.pending else None
 
 
@@ -258,7 +279,7 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
                 style="bold reverse" if navigation.pane == 1 and index == navigation.indices[1] else None,
             )
 
-    waiting_title = "Enabled Unfinished Links" if search is None or search.query is None else f"Enabled Unfinished ({len(enabled_unfinished_links)}/{len(full_unfinished)} matches)"
+    waiting_title = "Enabled Unfinished Links" if search is None or search.query is None else f"Enabled Unfinished Links ({len(enabled_unfinished_links)}/{len(full_unfinished)} matches)"
     panel_enabled = Panel(t_enabled, title=waiting_title, border_style="cyan" if navigation.pane == 1 else "dim white", box=box.ROUNDED)
 
     # Footer

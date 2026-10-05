@@ -69,7 +69,7 @@ class SearchTests(unittest.TestCase):
             'RUNNING', running, waiting, navigation=nav, search=search, width=80, height=18))
         text = output.getvalue()
         self.assertIn('Running Links (1/2 matches)', text)
-        self.assertIn('Enabled Unfinished (1/2 matches)', text)
+        self.assertIn('Enabled Unfinished Links (1/2 matches)', text)
         self.assertIn('Selected ID: 2', text)
         self.assertIn('/日本語', text)
         self.assertIn('[red]', text)
@@ -105,7 +105,7 @@ class SearchTests(unittest.TestCase):
         self.assertEqual(decoder.expire(), ['escape'])
         self.assertEqual(decoder.expire(), [])
         self.assertEqual(decoder.feed('\x1b[A'), ['up'])
-        self.assertEqual(decoder.feed('\x1bx'), ['escape', 'x'])
+        self.assertEqual(decoder.feed('\x1bx'), ['alt:x'])
 
     def test_posix_fragmented_utf8_and_idle_escape_event(self):
         keyboard = tui.KeyboardInput()
@@ -175,6 +175,84 @@ class SearchTests(unittest.TestCase):
         tui.generate_layout('RUNNING', [running[0]], [running[1]], navigation=nav, search=search)
         self.assertEqual(nav.selected_id, 2)
         self.assertEqual(nav.pane, 1)
+
+    def test_alt_commands_do_not_cancel_editor_or_execute_controls(self):
+        decoder = KeyDecoder(clock=lambda: 0)
+        keys = decoder.feed('/\x1bs\x1bd\x1b\x7f')
+        self.assertEqual(keys, ['/', 'alt:s', 'alt:d', 'alt:\x7f'])
+        client, text = self.run_keys(keys, [('RUNNING', [row(1, 'one')], [])])
+        client.toggle_state.assert_not_called()
+        client.device.downloads.query_links.assert_not_called()
+        self.assertIn('Esc Cancel', text)
+
+    def test_ctrl_c_raw_input_interrupts_posix_windows_and_search(self):
+        search = Search()
+        search.begin()
+        with self.assertRaises(KeyboardInterrupt):
+            search.handle_key('\x03')
+        for windows in (False, True):
+            keyboard = tui.KeyboardInput()
+            backend = MagicMock()
+            backend.kbhit.return_value = True
+            backend.getwch.return_value = '\x03'
+            with patch.object(tui, 'termios', None if windows else object()), \
+                 patch.object(tui, 'msvcrt', backend), \
+                 patch.object(tui.select, 'select', return_value=([0], [], [])), \
+                 patch.object(tui.os, 'read', return_value=b'\x03'):
+                with self.assertRaises(KeyboardInterrupt):
+                    keyboard.get_key()
+
+    def test_windows_alt_s_is_atomic_and_does_not_cancel_search(self):
+        keyboard, backend = tui.KeyboardInput(), MagicMock()
+        keyboard.decoder = KeyDecoder(clock=lambda: 0)
+        backend.kbhit.return_value = True
+        backend.getwch.side_effect = ['\x1b', 's']
+        search = Search()
+        search.begin()
+        with patch.object(tui, 'termios', None), patch.object(tui, 'msvcrt', backend):
+            self.assertIsNone(keyboard.get_key())
+            key = keyboard.get_key()
+            self.assertEqual(key, 'alt:s')
+            self.assertTrue(search.handle_key(key))
+            self.assertTrue(search.editing)
+
+    def test_windows_surrogate_pair_is_one_printable_search_character(self):
+        keyboard, backend = tui.KeyboardInput(), MagicMock()
+        backend.kbhit.return_value = True
+        backend.getwch.side_effect = ['\ud83d', '\ude00', 's']
+        with patch.object(tui, 'termios', None), patch.object(tui, 'msvcrt', backend):
+            self.assertIsNone(keyboard.get_key())
+            self.assertEqual(keyboard.get_key(), '😀')
+            self.assertEqual(keyboard.get_key(), 's')
+
+    def test_invalid_utf8_is_ignored_and_keyboard_context_resets_partial_state(self):
+        keyboard = tui.KeyboardInput()
+        self.assertEqual(keyboard.utf8.decode(b'\xff'), '')
+        keyboard.utf8.decode(b'\xe6')
+        keyboard.decoder.feed('\x1b')
+        keyboard.pending.append('s')
+        with patch.object(tui, 'termios', None):
+            with keyboard:
+                self.assertEqual(keyboard.utf8.decode('日'.encode()), '日')
+                self.assertFalse(keyboard.pending)
+                self.assertEqual(keyboard.decoder.sequence, '')
+                keyboard.utf8.decode(b'\xe6')
+            self.assertEqual(keyboard.utf8.decode('日'.encode()), '日')
+
+    def test_narrow_and_tiny_prompt_stays_two_lines(self):
+        search = Search()
+        search.begin()
+        search.draft = '日本語' * 80
+        for width in (1, 8, 14, 60):
+            output = io.StringIO()
+            Console(file=output, width=width).print(search.prompt(width))
+            self.assertEqual(len(output.getvalue().splitlines()), 2)
+            self.assertTrue(all(cell_len(line) <= width for line in output.getvalue().splitlines()))
+
+    def test_application_arrow_and_partial_csi_restart_do_not_cancel_search(self):
+        decoder = KeyDecoder(clock=lambda: 0)
+        self.assertEqual(decoder.feed('\x1bOA'), ['up'])
+        self.assertEqual(decoder.feed('\x1b[\x1b[B'), ['down'])
 
 
 if __name__ == '__main__':

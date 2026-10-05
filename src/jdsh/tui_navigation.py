@@ -106,6 +106,12 @@ class KeyDecoder:
     def feed(self, text):
         keys = self.expire()
         for char in text:
+            if self.sequence == '\x1b' and char not in ('[', 'O', '\x1b'):
+                # A prompt continuation is Meta/Alt, not Esc followed by a
+                # command. Keep it atomic so modal cancellation cannot leak s/d.
+                self.reset()
+                keys.append(char if char == '\x03' else 'alt:' + char)
+                continue
             if self.sequence and (char == "\x1b" or ord(char) < 32):
                 if self.sequence == '\x1b':
                     keys.append('escape')
@@ -121,8 +127,7 @@ class KeyDecoder:
                     self.sequence += char
                 else:
                     self.reset()
-                    keys.append('escape')
-                    keys.append(char)
+                    keys.append('alt:' + char)
             elif "@" <= char <= "~":
                 code = self.sequence[2:] + char
                 key = {"A": "up", "B": "down", "H": "home", "F": "end",
