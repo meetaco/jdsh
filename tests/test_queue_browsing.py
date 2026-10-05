@@ -91,7 +91,7 @@ class PackageTests(unittest.TestCase):
                 link(3, packageUUID=20, bytesLoaded=None, bytesTotal=-1),
                 link(4, bytesLoaded=0, bytesTotal=0)]
         before = deepcopy(rows)
-        result = summarize_packages(rows, [rows[0], rows[2], rows[3]], [{"uuid": 10, "name": "Archive"}])
+        result = summarize_packages(rows, [rows[0], rows[2], rows[3]], {10: "Archive"})
         self.assertEqual(result[0], {
             "uuid": 10, "name": "Archive", "matchedCount": 1, "linkCount": 2,
             "bytesLoaded": 10, "bytesTotal": 100, "states": {"RUNNING": 1}, "hosts": ["a"],
@@ -104,7 +104,7 @@ class PackageTests(unittest.TestCase):
 
     def test_unknown_member_makes_aggregate_unknown(self):
         rows = [link(1, packageUUID=10, bytesLoaded=1, bytesTotal=100), link(2, packageUUID=10)]
-        result = summarize_packages(rows, rows, [])[0]
+        result = summarize_packages(rows, rows, {})[0]
         self.assertIsNone(result['bytesTotal'])
         self.assertIsNone(result['bytesLoaded'])
 
@@ -123,7 +123,7 @@ class PackageTests(unittest.TestCase):
     def test_package_sort_uses_aggregate_not_first_child(self):
         rows = [link(1, packageUUID=10, bytesTotal=10), link(2, packageUUID=10, bytesTotal=100),
                 link(3, packageUUID=20, bytesTotal=50)]
-        result = sort_rows(summarize_packages(rows, rows, []), sort="size")
+        result = sort_rows(summarize_packages(rows, rows, {}), sort="size")
         self.assertEqual([row['uuid'] for row in result], [20, 10])
 
     def test_empty_queue_does_not_query_metadata(self):
@@ -196,3 +196,86 @@ class BrowseCLITests(unittest.TestCase):
                 cli._execute(cli.cmd_list, device, arguments.parse_args(['ls', '--packages']))
         self.assertEqual(caught.exception.code, 1)
         self.assertIn('metadata unavailable', stderr.getvalue())
+
+
+class ReviewRegressionTests(unittest.TestCase):
+    def test_blank_search_is_no_filter_at_all_boundaries(self):
+        rows = [link(1)]
+        for search in ('', ' ', '\t\n'):
+            self.assertIs(filter_links(rows, search=search), rows)
+            device = MagicMock()
+            device.downloads.query_links.return_value = []
+            output = io.StringIO()
+            cli.cmd_list(device, arguments.parse_args(['ls', '--search', search]),
+                         console=Console(file=output))
+            self.assertIn('Download queue is empty.', output.getvalue())
+            device.downloads.query_links.assert_called_once_with([LIST_LINK_STATE_QUERY.copy()])
+
+    def test_blank_hosts_rejected_by_cli_and_never_match_missing_hosts(self):
+        for host in ('', ' ', '\t'):
+            with patch('sys.stderr', new_callable=io.StringIO), self.assertRaises(SystemExit) as caught:
+                arguments.parse_args(['ls', '--host', host])
+            self.assertEqual(caught.exception.code, 2)
+            self.assertEqual(filter_links([link(1), link(2, host=None), link(3, host='')], hosts=[host]), [])
+
+    def test_append_defaults_have_no_shared_mutable_list(self):
+        parser = arguments._build_parser()
+        empty = parser.parse_args(['ls'])
+        self.assertIsNone(empty.state)
+        self.assertIsNone(empty.host)
+        first = parser.parse_args(['ls', '--host', 'a', '--state', 'waiting'])
+        first.host.append('b')
+        later = parser.parse_args(['ls', '--host', 'c'])
+        self.assertEqual(later.host, ['c'])
+        self.assertIsNone(later.state)
+        self.assertEqual(filter_links([link(1)], states=None, hosts=None), [link(1)])
+
+    def test_falsy_names_and_hosts_are_preserved_as_text(self):
+        row = link(1, name=0, host=0)
+        self.assertEqual(filter_links([row], search='0', hosts=['0']), [row])
+        self.assertEqual(filter_links([link(2, packageUUID=10)], search='0', package_names={10: 0})[0]['uuid'], 2)
+
+    def test_package_hosts_deduplicate_and_order_case_insensitively(self):
+        rows = [link(1, packageUUID=10, host='Z.COM'),
+                link(2, packageUUID=10, host='Example.com'),
+                link(3, packageUUID=10, host='example.COM')]
+        summary = summarize_packages(rows, rows, {})[0]
+        self.assertEqual(summary['hosts'], ['Example.com', 'Z.COM'])
+        other = dict(summary, uuid=20, hosts=['m.com'])
+        self.assertEqual([row['uuid'] for row in sort_rows([other, summary], sort='host', packages=True)], [10, 20])
+        # A link response may contain future fields; these do not select a mode.
+        rows = [link(1, host='z.com', hosts=['a.com']), link(2, host='m.com')]
+        self.assertEqual([row['uuid'] for row in sort_rows(rows, sort='host')], [2, 1])
+
+    def test_default_listing_preserves_full_response_and_query(self):
+        device = MagicMock()
+        rows = [link(2), link(1)]
+        device.downloads.query_links.return_value = rows
+        self.assertIs(services.list_downloads(device), rows)
+        device.downloads.query_links.assert_called_once_with([LIST_LINK_STATE_QUERY.copy()])
+        for field in ('host', 'bytesLoaded', 'bytesTotal', 'name'):
+            self.assertIs(LIST_LINK_STATE_QUERY[field], True)
+        # packageUUID is an unconditional response field, not a LinkQuery flag.
+        self.assertNotIn('packageUUID', LIST_LINK_STATE_QUERY)
+
+    def test_package_service_sort_reverse_and_unknown_rendering(self):
+        device = MagicMock()
+        device.downloads.query_links.return_value = [
+            link(1, packageUUID=10, bytesTotal=10), link(2, packageUUID=20, bytesTotal=100),
+            link(3, bytesTotal=-1),
+        ]
+        device.downloads.query_packages.return_value = []
+        result = services.list_download_packages(device, sort='size', reverse=True)
+        self.assertEqual([row['uuid'] for row in result], [20, 10, None])
+        from jdsh import rendering
+        output = io.StringIO()
+        rendering.render_packages(result, console=Console(file=output, width=180))
+        self.assertIn('UNKNOWN', output.getvalue())
+        self.assertIn('Unknown package name', output.getvalue())
+
+    def test_embedded_namespace_without_optional_flags_still_lists(self):
+        from types import SimpleNamespace
+        device = MagicMock()
+        device.downloads.query_links.return_value = []
+        cli.cmd_list(device, SimpleNamespace(), console=Console(file=io.StringIO()))
+        device.downloads.query_links.assert_called_once_with([LIST_LINK_STATE_QUERY.copy()])

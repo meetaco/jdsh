@@ -108,8 +108,10 @@ jd ls --packages --search archive --state waiting --sort progress --reverse
 ```
 
 `list` and `ls` accept the same options. `--search` matches a case-insensitive
-substring of a link's name; with `--packages` it also matches package names.
-`--host` matches an exact host name, ignoring case. Repeat `--state` or `--host`
+substring of a link's name (blank or whitespace-only search is ignored); with
+`--packages` it also matches package names.
+`--host` matches an exact host name, ignoring case; blank or whitespace-only
+host values are rejected. Repeat `--state` or `--host`
 to match any of the supplied values. Different filters are combined with AND.
 State names are the same diagnostic states shown by `jd ls` and `jd why`:
 `RUNNING`, `FINISHED`, `DISABLED`, `PROCESSING`, `WAITING`, `SKIPPED`, `FINAL`,
@@ -127,8 +129,10 @@ bytes downloaded/total bytes, diagnostic state counts, and hosts. Filters apply
 before aggregation: the sizes, states, hosts, and sorting keys describe only the
 matched links, while the total link count comes from the full link snapshot.
 A package with any unknown member size has an unknown aggregate size (`null`).
-Packages with no matching links are omitted, as are empty packages. Links with
-missing package IDs appear in an `UNKNOWN` ID group; missing package metadata
+Hosts are deduplicated and ordered ignoring case; the first API spelling is
+kept. Packages with no matching links are omitted, as are empty packages. Links with
+missing package IDs appear in an `UNKNOWN` ID group (search can match their link
+names, but there is no package name to search); missing package metadata
 keeps the actual ID and displays `Unknown package name`. Package metadata and
 links are separate API reads, so names may be unavailable if the queue changes
 between them. `--packages` cannot be combined with `-d`/`--detail`; use detailed
