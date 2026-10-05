@@ -64,10 +64,10 @@ jd
 │    enable / disable         [<id>...] [--package <id>]   Enable/disable selected downloads                                                                           │
 │    resume                   [<id>...] [--package <id>]   Request resume for selected downloads                                                                       │
 │    force                    [<id>...] [--package <id>]   Request forced download for selection                                                                       │
-│    reset                    [<id>...] [--package <id>] --yes   Reset selected downloads; can delete files                                                            │
-│    priority                 <level> [<id>...] [--package <id>] Set link/package priorities                                                                           │
-│    rename                   <name> --link <id> | --package <id>Rename one link or package                                                                            │
-│    directory                <path> --package <id>              Change package download destination                                                                   │
+│    reset                    [<id>...] [--package <id>] --yes     Reset selected downloads; can delete files                                                          │
+│    priority                 <level> [<id>...] [--package <id>]   Set link/package priorities                                                                         │
+│    rename                   <name> --link <id> | --package <id>  Rename one link or package                                                                          │
+│    directory                <path> --package <id>                Change package download destination                                                                 │
 │    start                                             Start/Resume downloads                                                                                          │
 │    stop                                              Stop downloads                                                                                                  │
 │    clear                                             Remove finished items from list                                                                                 │
@@ -167,9 +167,14 @@ and `LOWEST` (case-insensitive), followed by link IDs and/or `--package ID`.
 It sets the selected link priorities and/or selected package priorities.
 
 `rename NAME` requires exactly one `--link ID` or `--package ID`. Repeating a
-target option is rejected. Link names must be file names without path separators;
-package names can contain separators. Neither name can be blank or contain
-control characters. Values are preserved, including spaces and Unicode. A name
+target option in the CLI is rejected; direct service callers deduplicate IDs
+before requiring one unique target. Link names must be file names without path
+separators;
+package names are display labels and can contain separators or be `.` / `..`.
+Neither name can be blank or contain Unicode category `Cc` control characters
+(including newlines, tabs, and NEL). Other Unicode categories, including format
+characters (`Cf`) and line/paragraph separators (`Zl`/`Zp`), are preserved.
+Values are passed unchanged, including spaces and Unicode. A name
 starting with `-` can be supplied after `--` (for example,
 `jd rename --link 123456789 -- "-name.zip"`). JDownloader can rename an existing
 downloaded file when renaming a link; this request is not limited to display text.
@@ -180,6 +185,7 @@ path on the **JDownloader machine**. JDSH passes it unchanged and does not expan
 `~`, environment variables, or check/create folders on the client. Quote paths
 containing spaces, and Windows paths when running in a POSIX shell. JDownloader
 controls when the destination change is applied and may move existing files.
+Root paths such as `/` and `C:\` are allowed as absolute destinations.
 Path existence and permissions are determined on the JDownloader machine.
 
 These commands validate values before connecting and submit one request without

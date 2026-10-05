@@ -105,11 +105,11 @@ def _build_parser_with_commands():
     p_rm = command("remove", "Remove selected links or packages from the download queue; downloaded files are kept.", aliases=["rm"])
     selection_options(p_rm)
 
-    p_reset = command("reset", "Reset selected downloads. JDownloader may delete existing files and discard progress; --yes is required.")
+    p_reset = command("reset", "Reset selected downloads. JDownloader may delete existing files and discard progress; --yes is required.", allow_abbrev=False)
     selection_options(p_reset)
     p_reset.add_argument("--yes", action="store_true", help="Acknowledge that reset can delete existing files and discard download progress")
 
-    p_priority = command("priority", "Set priority for selected links or packages; lowercase levels are accepted.")
+    p_priority = command("priority", "Set priority for selected links or packages; lowercase levels are accepted.", allow_abbrev=False)
     p_priority.add_argument("level", type=_value_type(priority_value), metavar="LEVEL", help="HIGHEST, HIGHER, HIGH, DEFAULT, LOW, LOWER, or LOWEST")
     selection_options(p_priority)
 

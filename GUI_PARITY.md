@@ -74,7 +74,8 @@ selection. `unskip` remains pending investigation: the public API documentation
 and interface advertise package IDs before link IDs, while the published
 implementation treats the first array as link IDs. Resolve compatibility before
 exposing this operation, to avoid applying it to the wrong selection. Reset (with
-explicit acknowledgement), rename, priority, and destination are also available. Move/reorder, stop marks, comments, and unskip remain pending.
+explicit acknowledgement), rename, priority, and destination are also available.
+Move/reorder, stop marks, and comments remain pending.
 
 ### Phase 3 — LinkGrabber
 

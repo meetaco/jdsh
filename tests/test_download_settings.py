@@ -22,6 +22,11 @@ class RecordingDevice:
 
 class DownloadSettingsTests(unittest.TestCase):
     def test_valid_cli_dispatch_and_exact_payloads(self):
+        # Independent expected ordering from the official downloadsV2 schema:
+        # https://my.jdownloader.org/developers/ (renameLink/renamePackage:
+        # ID, name; setPriority: priority, linkIds, packageIds). The installed
+        # Downloads SDK lacks these three wrappers; reset/directory are also
+        # compared against its real wrappers below.
         cases = (
             (['reset', '1', '--yes', '--package', '3', '1'], '/downloadsV2/resetLinks', [[1], [3]]),
             (['reset', '--package', '3', '--yes'], '/downloadsV2/resetLinks', [[], [3]]),
@@ -124,3 +129,37 @@ class DownloadSettingsTests(unittest.TestCase):
         device.requests.clear()
         device.downloads.reset_links([1], [3])
         self.assertEqual(device.requests, expected)
+
+    def test_directory_raw_request_matches_real_sdk_route(self):
+        for path in ('/downloads/new', '/', 'C:\\', r'\\server\share\folder'):
+            with self.subTest(path=path):
+                device = RecordingDevice()
+                services.set_download_directory(device, path, [3])
+                expected = list(device.requests)
+                device.requests.clear()
+                device.downloads.set_dl_location(path, [3])
+                self.assertEqual(device.requests, expected)
+
+    def test_unicode_labels_and_duplicate_service_target_are_preserved(self):
+        for name in ('.', '..', 'a\u200db', 'a\u202eb', 'a\u2028b', 'a\u2029b'):
+            with self.subTest(name=name):
+                device = RecordingDevice()
+                services.rename_download(device, name, package_ids=[3, 3])
+                self.assertEqual(device.requests, [('/downloadsV2/renamePackage', [3, name])])
+        device = RecordingDevice()
+        services.rename_download(device, 'name.zip', [1, 1])
+        self.assertEqual(device.requests, [('/downloadsV2/renameLink', [1, 'name.zip'])])
+
+    def test_void_responses_submit_once_without_starting_controller(self):
+        # Official reset/rename/directory operations have no return type;
+        # None is a legitimate void response, not evidence of server rejection.
+        for argv in (['reset', '1', '--yes'], ['priority', 'high', '1'],
+                     ['rename', 'name', '--link', '1'], ['directory', '/', '--package', '3']):
+            with self.subTest(argv=argv):
+                device = MagicMock()
+                device.action.return_value = None
+                output = io.StringIO()
+                cli.cmd_download_setting(device, arguments.parse_args(argv), console=Console(file=output))
+                self.assertIn('Submitted', output.getvalue())
+                device.action.assert_called_once()
+                device.downloadcontroller.start_downloads.assert_not_called()
