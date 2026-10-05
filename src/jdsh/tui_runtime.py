@@ -79,7 +79,7 @@ class DashboardController:
             self.operation_error_expires = self.clock() + OPERATION_ERROR_SECONDS
 
 
-def run_loop(client, *, get_key, render, clock, sleep):
+def run_loop(client, *, get_key, render, clock, sleep, handle_key=None):
     """Run until interrupted, using injected input, rendering and monotonic time."""
     controller = DashboardController(client, clock)
     render(Snapshot("CONNECTING...", [], []), "LOADING...")
@@ -97,6 +97,8 @@ def run_loop(client, *, get_key, render, clock, sleep):
                 if controller.operation_error:
                     render(controller.snapshot, controller.operation_error)
                 break
+            if handle_key is not None and controller.can_toggle and handle_key(key):
+                render(controller.snapshot, controller.display_error)
             sleep(INPUT_POLL_SECONDS)
 
         controller.poll()

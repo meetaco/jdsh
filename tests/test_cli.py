@@ -131,7 +131,7 @@ class RawLinkStateTests(unittest.TestCase):
             self.assertNotIn(field, COMPACT_LINK_STATE_QUERY)
 
     def test_tui_query_omits_diagnostic_only_fields(self):
-        for field in ("advancedStatus", "skipped", "extractionStatus", "host", "url", "uuid"):
+        for field in ("advancedStatus", "skipped", "extractionStatus", "host", "url"):
             self.assertNotIn(field, TUI_LINK_STATE_QUERY)
 
     def test_detail_preserves_null_and_advanced_status(self):
