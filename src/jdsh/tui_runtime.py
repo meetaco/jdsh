@@ -23,6 +23,10 @@ class Snapshot:
     last_success_at: Optional[float] = None
     consecutive_failures: int = 0
 
+    @property
+    def is_available(self):
+        return self.error is None and self.state not in ("CONNECTING...", "ERROR")
+
 
 def refresh_status(snapshot, now):
     """Describe poll health using monotonic elapsed time, not download state."""
@@ -82,7 +86,7 @@ class DashboardController:
 
     @property
     def can_navigate(self):
-        return self.snapshot.error is None and self.snapshot.state not in ("CONNECTING...", "ERROR")
+        return self.snapshot.is_available
 
     @property
     def toggle_feedback(self):
@@ -106,7 +110,7 @@ class DashboardController:
             self.operation_error_expires = self.clock() + OPERATION_ERROR_SECONDS
 
 
-def run_loop(client, *, get_key, render, clock, sleep, handle_key=None, on_idle=None):
+def run_loop(client, *, get_key, render, clock, sleep, handle_key=None, on_idle=None, handle_view_key=None):
     """Run until interrupted, using injected input, rendering and monotonic time."""
     controller = DashboardController(client, clock)
     render(Snapshot("CONNECTING...", [], []), "LOADING...")
@@ -120,6 +124,9 @@ def run_loop(client, *, get_key, render, clock, sleep, handle_key=None, on_idle=
             if on_idle is not None:
                 on_idle(controller.snapshot, controller.display_error)
             key = get_key()
+            if handle_view_key is not None and handle_view_key(key, controller.snapshot):
+                render(controller.snapshot, controller.display_error)
+                continue
             if key == "s" and controller.can_toggle:
                 render(controller.snapshot, controller.toggle_feedback)
                 controller.toggle()

@@ -65,6 +65,32 @@ and poll schedule do not guarantee real elapsed time across system suspend.
 Status requests remain synchronous: age redraws continue during a slow request,
 but keyboard handling and new status results wait for that request to finish.
 
+### TUI link details and diagnosis
+
+Select a row and press `d` to open details for that link using the same diagnostic
+service as `jd why ID`. The view shows the name, controller state, diagnosis,
+reason and its source (`jdownloader`, `inferred`, or `unknown`), availability,
+status and extraction state. Rich markup in server text is displayed literally, and embedded newlines are
+preserved (CR/CRLF become LF). Other C0/C1 terminal control characters are
+replaced with `?`.
+
+Details are captured on demand. Press `d` again to refresh the displayed ID,
+`j/k` or Up/Down to scroll, Page Up/Down or Home/End to move through long reasons,
+and `q` to return to the queue. Tab switches panes after returning to the queue.
+Normal status polling continues, but does not
+refetch details. The details ID stays fixed even if the queue selection moves or
+the link disappears; refresh then reports a missing link if it was removed.
+
+After a status polling failure the view warns that captured details may be stale.
+Scrolling and `q` remain available; `d` is ignored until status polling recovers.
+Empty panes do not trigger a detail query. No availability check or per-link
+operation is performed. `s` still controls the global download controller.
+Detail requests are synchronous, like ordinary status requests. A loading
+message is drawn before each detail request. After `s`, the details view and
+footer indicate that captured controller/diagnosis information needs an explicit
+`d` refresh; no extra detail query is triggered. Lowercase ASCII `d` and `q` are
+the supported detail shortcuts.
+
 ### TUI navigation
 
 Run `jd` without arguments to open the dashboard. The active pane has a cyan
