@@ -41,6 +41,22 @@ jd
     *   Press `s` to Start/Stop downloads. 
     *   Press `Ctrl+C` to quit.
 
+### TUI refresh and retry feedback
+
+The dashboard header shows `Live | Last success: Ns ago` after a successful
+status refresh. The age uses elapsed time and updates once per second between
+polls, without extra API requests. `Live` means the last status poll succeeded;
+it does not mean that downloads are running.
+
+A failed poll shows `Retrying (N failures)` and the age of the last successful
+refresh. Before any successful poll it says `No successful refresh yet`.
+The counter counts consecutive failed status polls and resets on recovery;
+start/stop operation failures do not affect it. JDSH retries status requests
+through the existing connection at the configured refresh interval. This does
+not establish a new connection or perform a download action. Failed polls keep
+both panes empty and disable navigation/start/stop until status polling recovers;
+the saved selection is retained for recovery.
+
 ### TUI navigation
 
 Run `jd` without arguments to open the dashboard. The active pane has a cyan

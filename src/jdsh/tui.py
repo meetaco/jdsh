@@ -98,7 +98,7 @@ class KeyboardInput:
 
 
 def generate_layout(state, running_links, enabled_unfinished_links, override_status=None,
-                    *, navigation=None, height=25, width=100):
+                    *, navigation=None, height=25, width=100, refresh_status=None):
     if height < MIN_TERMINAL_ROWS:
         return Panel(Text("Terminal too short: use at least 18 rows. Ctrl+C quits."), border_style="red")
     # Render transient poll failures with empty panes without changing the saved selection.
@@ -147,7 +147,9 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
         f"[dim]Running left: [/dim] [yellow]{utils.human_size(summary.remaining)}[/]"
     )
 
-    header = Panel(grid, title="JDownloader Panel", border_style=border_color, box=box.ROUNDED)
+    header = Panel(grid, title="JDownloader Panel",
+                   subtitle=Text(refresh_status, no_wrap=True, overflow="ellipsis") if refresh_status else None,
+                   border_style=border_color, box=box.ROUNDED)
 
     # Running links: compact mode keeps the name/progress usable at 80 columns.
     compact = width < 100
@@ -250,18 +252,24 @@ def run(client, *, console=None, keyboard=None, clock=None, sleep=None):
         keyboard = KeyboardInput() if keyboard is None else keyboard
         navigation = Navigation()
         last_size = [None]
+        last_refresh_status = [None]
         with keyboard as kbd, Live(console=console, refresh_per_second=4, screen=True) as live:
             def render(snapshot, override_status):
                 size = console.size
                 last_size[0] = size
+                health = tui_runtime.refresh_status(snapshot, clock())
+                last_refresh_status[0] = health
                 live.update(generate_layout(
                     snapshot.state, snapshot.running_links, snapshot.enabled_unfinished_links,
                     override_status=override_status, navigation=navigation,
                     height=size.height, width=size.width,
+                    refresh_status=health,
                 ))
 
             def check_resize(snapshot, override_status):
-                if console.size != last_size[0]:
+                # Keep the age ticking between polls without touching the API.
+                health = tui_runtime.refresh_status(snapshot, clock())
+                if console.size != last_size[0] or health != last_refresh_status[0]:
                     render(snapshot, override_status)
 
             run_loop(client, get_key=kbd.get_key, render=render, clock=clock, sleep=sleep, handle_key=navigation.handle_key, on_idle=check_resize)
