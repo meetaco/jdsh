@@ -122,6 +122,22 @@ def cmd_download_action(device, args, *, console=None):
     _render_selection_request(args.command, selection, console=console)
 
 
+def cmd_download_setting(device, args, *, console=None):
+    if args.command == "reset":
+        selection = services.reset_downloads(device, args.uuids, args.package or (), confirmed=args.yes)
+    elif args.command == "priority":
+        selection = services.set_download_priority(device, args.level, args.uuids, args.package or ())
+    elif args.command == "rename":
+        selection = services.rename_download(device, args.name,
+                                            [args.link] if args.link is not None else (),
+                                            [args.package] if args.package is not None else ())
+    elif args.command == "directory":
+        selection = services.set_download_directory(device, args.path, args.package)
+    else:
+        raise JDShError(f"Unsupported download setting: {args.command}")
+    _render_selection_request(args.command, selection, console=console)
+
+
 def cmd_replace(device, args, *, console=None):
     services.replace_download(device, args.uuid, args.url)
     rendering.render_message("Replacement URL added and original queue entry removed.", console=console)
@@ -190,6 +206,8 @@ def _main(argv, console=None):
         'stop': cmd_simple, 'clear': cmd_simple,
         'enable': cmd_download_action, 'disable': cmd_download_action,
         'resume': cmd_download_action, 'force': cmd_download_action,
+        'reset': cmd_download_setting, 'priority': cmd_download_setting,
+        'rename': cmd_download_setting, 'directory': cmd_download_setting,
         'version': cmd_version,
     }
     handler = actions.get(args.command)

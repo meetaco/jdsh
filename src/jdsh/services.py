@@ -18,6 +18,7 @@ from .client import (
 from .diagnostics import available_status, diagnose_link
 from .errors import ServiceError
 from .download_selection import download_id, select_downloads
+from .download_values import priority_value, rename_value, directory_value
 from .queue_view import filter_links, normalize_search, sort_rows, summarize_packages
 
 CHECK_TIMEOUT_SECONDS = 30.0
@@ -103,6 +104,46 @@ def apply_download_action(device, action, link_ids=(), package_ids=()):
 
 def remove_downloads(device, link_ids, package_ids=()):
     return apply_download_action(device, "remove", link_ids, package_ids)
+
+
+def _submit_download_setting(device, operation, endpoint, params, selection):
+    result = device.action(endpoint, params)
+    if result is False:
+        raise ServiceError(f"JDownloader did not accept the {operation} request")
+    return selection
+
+
+def reset_downloads(device, link_ids=(), package_ids=(), *, confirmed=False):
+    selection = select_downloads(link_ids, package_ids)
+    if confirmed is not True:
+        raise ValueError("reset can delete existing files and discard progress; explicit confirmation is required")
+    return _submit_download_setting(device, "reset", "/downloadsV2/resetLinks",
+                                    [list(selection.link_ids), list(selection.package_ids)], selection)
+
+
+def set_download_priority(device, level, link_ids=(), package_ids=()):
+    selection = select_downloads(link_ids, package_ids)
+    level = priority_value(level)
+    return _submit_download_setting(device, "priority", "/downloadsV2/setPriority",
+                                    [level, list(selection.link_ids), list(selection.package_ids)], selection)
+
+
+def rename_download(device, name, link_ids=(), package_ids=()):
+    selection = select_downloads(link_ids, package_ids)
+    if len(selection.link_ids) + len(selection.package_ids) != 1:
+        raise ValueError("rename requires exactly one link ID or one package ID")
+    package = bool(selection.package_ids)
+    name = rename_value(name, package=package)
+    endpoint = "/downloadsV2/renamePackage" if package else "/downloadsV2/renameLink"
+    target = selection.package_ids[0] if package else selection.link_ids[0]
+    return _submit_download_setting(device, "rename", endpoint, [target, name], selection)
+
+
+def set_download_directory(device, path, package_ids):
+    selection = select_downloads((), package_ids)
+    path = directory_value(path)
+    return _submit_download_setting(device, "directory", "/downloadsV2/setDownloadDirectory",
+                                    [path, list(selection.package_ids)], selection)
 
 
 def start_downloads(device) -> None:

@@ -22,10 +22,10 @@ Legend:
 | Downloads | Start / stop controller | ✅ | ✅ | Existing controls. |
 | Downloads | Enable / disable selection | ✅ | ❌ | `jd enable` / `jd disable`, link IDs and `--package`. |
 | Downloads | Force download | ✅ | ❌ | `jd force`, link IDs and `--package`. |
-| Downloads | Resume / reset / unskip | 🟡 | ❌ | `jd resume` available; reset and unskip remain pending. |
-| Downloads | Rename link / package | ❌ | ❌ | Exposed by downloadsV2. |
-| Downloads | Priority | ❌ | ❌ | Exposed by downloadsV2. |
-| Downloads | Download directory | 🟡 | ❌ | Visible via package details; mutation not exposed. |
+| Downloads | Resume / reset / unskip | 🟡 | ❌ | `jd resume` and `jd reset --yes` available; unskip remains pending. |
+| Downloads | Rename link / package | ✅ | ❌ | `jd rename NAME --link ID` or `--package ID`. |
+| Downloads | Priority | ✅ | ❌ | `jd priority LEVEL`, with explicit link/package selection. |
+| Downloads | Download directory | ✅ | ❌ | `jd directory PATH --package ID`; path is on the JD machine. |
 | Downloads | Move / reorder links and packages | ❌ | ❌ | Exposed by downloadsV2. |
 | Downloads | Stop mark | ❌ | ❌ | Exposed by downloadsV2. |
 | Downloads | Comments | 🟡 | ❌ | Readable in detailed output; mutation not exposed. |
@@ -73,8 +73,8 @@ Enable/disable, resume, force, and queue removal now share explicit link/package
 selection. `unskip` remains pending investigation: the public API documentation
 and interface advertise package IDs before link IDs, while the published
 implementation treats the first array as link IDs. Resolve compatibility before
-exposing this operation, to avoid applying it to the wrong selection. Reset,
-rename, priority, destination, and the remaining actions will follow separately.
+exposing this operation, to avoid applying it to the wrong selection. Reset (with
+explicit acknowledgement), rename, priority, and destination are also available. Move/reorder, stop marks, comments, and unskip remain pending.
 
 ### Phase 3 — LinkGrabber
 

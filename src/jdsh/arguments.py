@@ -4,7 +4,24 @@ import argparse
 from typing import Sequence
 
 from .queue_options import LINK_STATES, SORT_KEYS
-from .download_selection import SELECTED_COMMANDS, download_id
+from .download_selection import SELECTION_OPTION_COMMANDS, download_id
+from .download_values import nonblank_text, priority_value, rename_value, directory_value
+
+
+class _SingleTarget(argparse.Action):
+    def __call__(self, parser, namespace, value, option_string=None):
+        if getattr(namespace, self.dest, None) is not None:
+            raise argparse.ArgumentError(self, "specify exactly one target ID")
+        setattr(namespace, self.dest, value)
+
+
+def _value_type(validate):
+    def parse(value):
+        try:
+            return validate(value)
+        except ValueError as error:
+            raise argparse.ArgumentTypeError(str(error)) from error
+    return parse
 
 
 def _download_id(value):
@@ -88,6 +105,24 @@ def _build_parser_with_commands():
     p_rm = command("remove", "Remove selected links or packages from the download queue; downloaded files are kept.", aliases=["rm"])
     selection_options(p_rm)
 
+    p_reset = command("reset", "Reset selected downloads. JDownloader may delete existing files and discard progress; --yes is required.")
+    selection_options(p_reset)
+    p_reset.add_argument("--yes", action="store_true", help="Acknowledge that reset can delete existing files and discard download progress")
+
+    p_priority = command("priority", "Set priority for selected links or packages; lowercase levels are accepted.")
+    p_priority.add_argument("level", type=_value_type(priority_value), metavar="LEVEL", help="HIGHEST, HIGHER, HIGH, DEFAULT, LOW, LOWER, or LOWEST")
+    selection_options(p_priority)
+
+    p_rename = command("rename", "Rename one link or package; link renaming can also rename an existing downloaded file.", allow_abbrev=False)
+    p_rename.add_argument("name", type=_value_type(nonblank_text), metavar="NAME", help="New name (quote names containing spaces)")
+    rename_target = p_rename.add_mutually_exclusive_group(required=True)
+    rename_target.add_argument("--link", action=_SingleTarget, type=_download_id, metavar="ID", help="One download link ID")
+    rename_target.add_argument("--package", action=_SingleTarget, type=_download_id, metavar="ID", help="One package ID")
+
+    p_directory = command("directory", "Change download destination for packages using a path on the JDownloader machine; JD may move existing files.", allow_abbrev=False)
+    p_directory.add_argument("path", type=_value_type(directory_value), metavar="PATH", help="Absolute POSIX or Windows path; passed unchanged to JDownloader")
+    p_directory.add_argument("--package", action="append", type=_download_id, required=True, metavar="ID", help="Package ID; repeat for multiple packages")
+
     p_rep = command("replace", 'Add a replacement URL with autostart, then remove the original link.')
     p_rep.add_argument("uuid", type=_download_id, metavar="ID", help="Original download link ID shown by jd ls")
     p_rep.add_argument("url", metavar="URL", help="Replacement URL")
@@ -105,7 +140,7 @@ def _normalize_argv(argv):
     A standalone -- terminates options; it cannot escape a file option value.
     """
     argv = list(argv)
-    if argv and argv[0] in SELECTED_COMMANDS:
+    if argv and argv[0] in SELECTION_OPTION_COMMANDS:
         options, positionals = [], []
         index = 1
         while index < len(argv):
@@ -124,7 +159,9 @@ def _normalize_argv(argv):
                 options.extend(argv[index:index + 2])
                 index += 2
                 continue
-            if arg.startswith("--package="):
+            if arg == "--yes" and argv[0] == "reset":
+                options.append(arg)
+            elif arg.startswith("--package="):
                 options.append(arg)
             else:
                 # This bucket only preserves token order. Help/unknown options
@@ -165,8 +202,15 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     """
     parser, commands = _build_parser_with_commands()
     args = parser.parse_args(_normalize_argv(argv))
-    if args.command in SELECTED_COMMANDS and not args.uuids and not args.package:
+    if args.command in SELECTION_OPTION_COMMANDS and not args.uuids and not args.package:
         commands[args.command].error("requires download link IDs or --package ID")
+    if args.command == "reset" and not args.yes:
+        commands["reset"].error("reset can delete existing files and discard progress; supply --yes to acknowledge")
+    if args.command == "rename":
+        try:
+            rename_value(args.name, package=args.package is not None)
+        except ValueError as error:
+            commands["rename"].error(str(error))
     if args.command in ("list", "ls"):
         if any(not host.strip() for host in (args.host or ())):
             parser.error("--host requires a nonempty host name")

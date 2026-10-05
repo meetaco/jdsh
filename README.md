@@ -64,6 +64,10 @@ jd
 │    enable / disable         [<id>...] [--package <id>]   Enable/disable selected downloads                                                                           │
 │    resume                   [<id>...] [--package <id>]   Request resume for selected downloads                                                                       │
 │    force                    [<id>...] [--package <id>]   Request forced download for selection                                                                       │
+│    reset                    [<id>...] [--package <id>] --yes   Reset selected downloads; can delete files                                                            │
+│    priority                 <level> [<id>...] [--package <id>] Set link/package priorities                                                                           │
+│    rename                   <name> --link <id> | --package <id>Rename one link or package                                                                            │
+│    directory                <path> --package <id>              Change package download destination                                                                   │
 │    start                                             Start/Resume downloads                                                                                          │
 │    stop                                              Stop downloads                                                                                                  │
 │    clear                                             Remove finished items from list                                                                                 │
@@ -140,6 +144,48 @@ original is kept. If removal fails, JDSH reports that the replacement was added
 and both entries may remain; inspect `jd ls` and `jd grabber` before retrying.
 The replacement is initially in LinkGrabber, so this operation does not prove
 that its download will succeed.
+
+### Reset, rename, priority, and destination
+
+```bash
+jd reset 123456789 --yes
+jd reset --package 111111111 --yes
+jd priority high 123456789 --package 111111111
+jd rename "new name.zip" --link 123456789
+jd rename "New package" --package 111111111
+jd directory "/downloads/new folder" --package 111111111
+```
+
+`reset` shares the positional link IDs and repeatable `--package ID` selection
+used by the other download actions. It resets state/progress through JDownloader
+and can delete existing files, including completed downloads; `--yes` is required
+to acknowledge that behavior. It does not explicitly start the global controller.
+Use `resume` for a resume/recovery request instead of discarding progress.
+
+`priority LEVEL` accepts `HIGHEST`, `HIGHER`, `HIGH`, `DEFAULT`, `LOW`, `LOWER`,
+and `LOWEST` (case-insensitive), followed by link IDs and/or `--package ID`.
+It sets the selected link priorities and/or selected package priorities.
+
+`rename NAME` requires exactly one `--link ID` or `--package ID`. Repeating a
+target option is rejected. Link names must be file names without path separators;
+package names can contain separators. Neither name can be blank or contain
+control characters. Values are preserved, including spaces and Unicode. A name
+starting with `-` can be supplied after `--` (for example,
+`jd rename --link 123456789 -- "-name.zip"`). JDownloader can rename an existing
+downloaded file when renaming a link; this request is not limited to display text.
+
+`directory PATH` requires one or more `--package ID` options; it does not accept
+link IDs or infer their parent packages. Supply an absolute POSIX or Windows
+path on the **JDownloader machine**. JDSH passes it unchanged and does not expand
+`~`, environment variables, or check/create folders on the client. Quote paths
+containing spaces, and Windows paths when running in a POSIX shell. JDownloader
+controls when the destination change is applied and may move existing files.
+Path existence and permissions are determined on the JDownloader machine.
+
+These commands validate values before connecting and submit one request without
+retrying. Messages show submitted target counts; acceptance does not prove the
+asynchronous changes have completed. Missing/stale IDs can be ignored upstream.
+Inspect `jd ls -d` or `jd show ID` afterward to confirm the resulting state.
 
 ### Browsing the download queue
 

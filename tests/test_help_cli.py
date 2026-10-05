@@ -13,7 +13,7 @@ class CommandHelpTests(unittest.TestCase):
     def test_every_command_has_offline_specific_help(self):
         commands = ('status', 'list', 'ls', 'show', 'why', 'check', 'grabber',
                     'confirm', 'start', 'stop', 'clear', 'version', 'help',
-                    'add', 'remove', 'rm', 'replace', 'enable', 'disable', 'resume', 'force')
+                    'add', 'remove', 'rm', 'replace', 'enable', 'disable', 'resume', 'force', 'reset', 'priority', 'rename', 'directory')
         for command in commands:
             for flag in ('-h', '--help'):
                 with self.subTest(command=command, flag=flag), \

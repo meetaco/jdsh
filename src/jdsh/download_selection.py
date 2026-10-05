@@ -6,6 +6,8 @@ from typing import Iterable, Tuple
 MAX_DOWNLOAD_ID = (1 << 63) - 1
 SELECTED_COMMANDS = ("enable", "disable", "resume", "force", "remove", "rm")
 
+SELECTION_OPTION_COMMANDS = SELECTED_COMMANDS + ("reset", "priority")
+
 
 def download_id(value):
     """Accept positive IDs representable by JDownloader's signed long type."""
