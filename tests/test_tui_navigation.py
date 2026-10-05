@@ -230,7 +230,7 @@ class ReviewRegressionTests(unittest.TestCase):
         now = [0.0]
         decoder = KeyDecoder(clock=lambda: now[0])
         self.assertEqual(decoder.feed('\x1b'), [])
-        self.assertEqual(decoder.feed('s'), ['s'])
+        self.assertEqual(decoder.feed('s'), ['escape', 's'])
         self.assertEqual(decoder.feed('\x1b['), [])
         now[0] = 0.2
         self.assertEqual(decoder.feed('j'), ['j'])

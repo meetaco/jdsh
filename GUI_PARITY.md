@@ -99,8 +99,9 @@ Up/Down and Home/End with ID-preserving selection and height-based viewports.
 The header now shows last successful refresh age and consecutive failed status
 polls, with retry feedback and recovery through the existing connection.
 Selected-link details/diagnosis now use the same service as jd why, with explicit
-refresh and scrollable text. Package hierarchy and action shortcuts remain
-pending and should use the underlying CLI operations.
+refresh and scrollable text. Local name search is also available via / with
+Unicode matching and no extra status queries. Package hierarchy and action
+shortcuts remain pending and should use the underlying CLI operations.
 
 ## Diagnostic policy
 

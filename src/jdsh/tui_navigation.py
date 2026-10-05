@@ -98,13 +98,17 @@ class KeyDecoder:
 
     def expire(self):
         if self.sequence and self.clock() - self.last_byte_at >= self.timeout:
+            keys = ['escape'] if self.sequence == '\x1b' else []
             self.reset()
+            return keys
+        return []
 
     def feed(self, text):
-        self.expire()
-        keys = []
+        keys = self.expire()
         for char in text:
             if self.sequence and (char == "\x1b" or ord(char) < 32):
+                if self.sequence == '\x1b':
+                    keys.append('escape')
                 # A new ESC/control key cannot be a CSI parameter; reprocess it.
                 self.reset()
             if not self.sequence:
@@ -117,6 +121,7 @@ class KeyDecoder:
                     self.sequence += char
                 else:
                     self.reset()
+                    keys.append('escape')
                     keys.append(char)
             elif "@" <= char <= "~":
                 code = self.sequence[2:] + char
