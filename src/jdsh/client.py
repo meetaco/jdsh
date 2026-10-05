@@ -98,6 +98,9 @@ GRABBER_LINK_STATE_QUERY = MappingProxyType({
 # Diagnostic-only fields such as advancedStatus remain available to `jd ls -d`
 # without paying their construction/payload cost on every TUI refresh.
 TUI_LINK_STATE_QUERY = {
+    "uuid": True,
+    "startAt": 0,
+    "maxResults": -1,
     "name": True,
     "bytesLoaded": True,
     "bytesTotal": True,

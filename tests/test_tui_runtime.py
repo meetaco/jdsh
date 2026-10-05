@@ -167,6 +167,7 @@ class TerminalLifecycleTests(unittest.TestCase):
         for error in (KeyboardInterrupt(), RuntimeError("unexpected")):
             with self.subTest(error=type(error).__name__):
                 keyboard, live, console = MagicMock(), MagicMock(), MagicMock()
+                console.size = SimpleNamespace(width=100, height=25)
                 exits = []
                 live.__exit__.side_effect = lambda *args: exits.append("live") or False
                 keyboard.__exit__.side_effect = lambda *args: exits.append("keyboard") or False

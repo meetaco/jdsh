@@ -58,6 +58,10 @@ class DashboardController:
         return self.snapshot.state != "ERROR"
 
     @property
+    def can_navigate(self):
+        return self.snapshot.error is None and self.snapshot.state not in ("CONNECTING...", "ERROR")
+
+    @property
     def toggle_feedback(self):
         return "STOPPING..." if self.snapshot.state in ("RUNNING", "DOWNLOADING") else "STARTING..."
 
@@ -79,7 +83,7 @@ class DashboardController:
             self.operation_error_expires = self.clock() + OPERATION_ERROR_SECONDS
 
 
-def run_loop(client, *, get_key, render, clock, sleep):
+def run_loop(client, *, get_key, render, clock, sleep, handle_key=None, on_idle=None):
     """Run until interrupted, using injected input, rendering and monotonic time."""
     controller = DashboardController(client, clock)
     render(Snapshot("CONNECTING...", [], []), "LOADING...")
@@ -90,6 +94,8 @@ def run_loop(client, *, get_key, render, clock, sleep):
         start_time = clock()
         controller.expire_error(start_time)
         while clock() - start_time < max(client.settings.refresh_rate, MIN_REFRESH_SECONDS):
+            if on_idle is not None:
+                on_idle(controller.snapshot, controller.display_error)
             key = get_key()
             if key == "s" and controller.can_toggle:
                 render(controller.snapshot, controller.toggle_feedback)
@@ -97,7 +103,12 @@ def run_loop(client, *, get_key, render, clock, sleep):
                 if controller.operation_error:
                     render(controller.snapshot, controller.operation_error)
                 break
-            sleep(INPUT_POLL_SECONDS)
+            navigated = handle_key is not None and controller.can_navigate and handle_key(key)
+            if navigated:
+                render(controller.snapshot, controller.display_error)
+            # Drain buffered key repeats promptly; polling still has its deadline.
+            if not navigated:
+                sleep(INPUT_POLL_SECONDS)
 
         controller.poll()
         controller.expire_error(clock())

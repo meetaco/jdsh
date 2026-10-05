@@ -41,6 +41,42 @@ jd
     *   Press `s` to Start/Stop downloads. 
     *   Press `Ctrl+C` to quit.
 
+### TUI navigation
+
+Run `jd` without arguments to open the dashboard. The active pane has a cyan
+border and the selected row is highlighted. Link IDs, the active pane's visible
+range, and the selected ID are shown so selection remains identifiable.
+
+| Key | Action |
+| --- | --- |
+| Up / Down, `k` / `j` | Move one row in the active pane |
+| Tab | Switch between Running and Enabled Unfinished |
+| Page Up / Page Down | Move by the active pane's visible row count |
+| Home / End | Select the first / last row |
+| `s` | Start/stop the global controller, as before |
+| Ctrl+C | Quit and restore terminal settings |
+
+Rows scroll within each pane instead of cutting off after the first ten waiting
+links. Viewports track terminal size between polls (checked every idle input
+tick); use at least 18 rows. Below 100 columns, ID cells show the final seven digits with
+a `...` prefix and the running table omits size/ETA to keep names/progress readable.
+The footer retains the full selected ID; shortened cell IDs are display-only.
+Selection follows the link ID across refreshes, reordering, and moves between
+panes. If the link disappears, the nearest remaining ordinal row is selected;
+empty panes have no selected ID. A temporary poll error does not discard the
+remembered selection. Each pane remembers its selected ID and scroll position
+when switching.
+Terminals below 18 rows show guidance without changing viewport offsets.
+Standalone Esc is ignored; incomplete escape sequences expire after 150 ms.
+
+This is single-row navigation. The dashboard still shows running links and
+enabled unfinished links; finished/disabled links remain outside these views.
+Navigation itself performs no API requests or mutations and does not alter the
+refresh schedule. `s` controls the global controller regardless of the selected
+row. Search, details, package selection and individual row actions will follow
+in separate PRs. Linux/macOS ANSI keys and Windows extended keys are decoded;
+Windows input is covered by simulated tests, not a live Windows terminal run.
+
 ### Commands Overview
 
 ```bash

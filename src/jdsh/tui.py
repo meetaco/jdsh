@@ -1,5 +1,9 @@
 import time
 import sys
+import os
+from collections import deque
+
+msvcrt = None
 
 try:
     # Linux & MacOS
@@ -22,6 +26,13 @@ from rich.text import Text
 from rich import box
 
 from . import tui_runtime, utils
+from .tui_navigation import Navigation, KeyDecoder, WINDOWS_KEYS
+from .errors import ServiceError
+
+MIN_TERMINAL_ROWS = 18
+HEADER_FOOTER_ROWS = 6
+# Two panel borders, header, separator, and SIMPLE table trailing blank row.
+PANEL_CHROME_ROWS = 5
 from .stats import summarize_transfers, transfer_progress
 # Readable compatibility aliases; patch loop constants in tui_runtime.
 from .tui_runtime import (
@@ -32,6 +43,11 @@ from .tui_runtime import (
 
 
 class KeyboardInput:
+    def __init__(self):
+        self.decoder = KeyDecoder()
+        self.pending = deque()
+        self.windows_prefix = False
+
     def __enter__(self):
         if termios:
             self.old_settings = termios.tcgetattr(sys.stdin)
@@ -42,18 +58,56 @@ class KeyboardInput:
         if termios:
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
 
+    def _next_key(self):
+        key = self.pending.popleft()
+        if key == "\x03":
+            raise KeyboardInterrupt
+        return key
+
     def get_key(self):
+        if self.pending:
+            return self._next_key()
+        self.decoder.expire()
         if termios:
-            if select.select([sys.stdin], [], [], 0)[0]:
-                return sys.stdin.read(1)
-        
-        elif msvcrt:
-            if msvcrt.kbhit():
-                return msvcrt.getch().decode("utf-8", errors="ignore")
-        return None
+            try:
+                readable = select.select([sys.stdin], [], [], 0)[0]
+                chunk = os.read(sys.stdin.fileno(), 64) if readable else None
+            except (OSError, ValueError) as error:
+                raise ServiceError("Terminal input is unavailable") from error
+            if chunk == b"":
+                raise ServiceError("Terminal input closed")
+            if chunk is not None:
+                # Read bytes directly: TextIO buffering can hide the rest of an
+                # escape sequence from select(). Navigation keys are ASCII.
+                self.pending.extend(self.decoder.feed(chunk.decode("utf-8", errors="ignore")))
+        elif msvcrt is not None and msvcrt.kbhit():
+            key = msvcrt.getwch()
+            if self.windows_prefix:
+                self.windows_prefix = False
+                decoded = WINDOWS_KEYS.get(key)
+                if decoded:
+                    self.pending.append(decoded)
+                # Unknown extended keys are discarded, never replayed as commands.
+            # getwch uses U+00E0 for an extended-key prefix, also the glyph à.
+            # This console API cannot disambiguate those representations.
+            elif key in ("\x00", "\xe0"):
+                self.windows_prefix = True
+            else:
+                self.pending.append(key)
+        return self._next_key() if self.pending else None
 
 
-def generate_layout(state, running_links, enabled_unfinished_links, override_status=None):
+def generate_layout(state, running_links, enabled_unfinished_links, override_status=None,
+                    *, navigation=None, height=25, width=100):
+    if height < MIN_TERMINAL_ROWS:
+        return Panel(Text("Terminal too short: use at least 18 rows. Ctrl+C quits."), border_style="red")
+    # Render transient poll failures with empty panes without changing the saved selection.
+    navigation = Navigation() if navigation is None or state == "ERROR" else navigation
+    navigation.sync(running_links, enabled_unfinished_links)
+    body_height = max(0, height - HEADER_FOOTER_ROWS)
+    running_height = max(6, min(body_height - HEADER_FOOTER_ROWS, body_height * 2 // 3))
+    pane_heights = (running_height, max(6, body_height - running_height))
+    navigation.resize([max(1, value - PANEL_CHROME_ROWS) for value in pane_heights])
     summary = summarize_transfers(running_links)
 
     # Header
@@ -95,19 +149,27 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
 
     header = Panel(grid, title="JDownloader Panel", border_style=border_color, box=box.ROUNDED)
 
-    # Running links
+    # Running links: compact mode keeps the name/progress usable at 80 columns.
+    compact = width < 100
+    def row_id(link):
+        value = str(link.get("uuid", "?"))
+        return Text("..." + value[-7:] if compact and len(value) > 10 else value)
+
     t_running = Table(expand=True, box=box.SIMPLE, show_edge=False, pad_edge=False)
+    t_running.add_column("ID", width=10 if compact else None, no_wrap=True)
     t_running.add_column("Name", ratio=3, no_wrap=True)
-    t_running.add_column("Progress", ratio=2) 
-    t_running.add_column("%", width=5, justify="right")
-    t_running.add_column("Size (Done/Total)", width=20, justify="right", style="dim")
-    t_running.add_column("Speed", width=12, justify="right", style="cyan")
-    t_running.add_column("ETA", width=10, justify="right", style="green")
+    t_running.add_column("Progress", ratio=2, no_wrap=True)
+    t_running.add_column("%", width=5, justify="right", no_wrap=True)
+    if not compact:
+        t_running.add_column("Size (Done/Total)", width=20, justify="right", style="dim", no_wrap=True)
+    t_running.add_column("Speed", width=10 if compact else 12, justify="right", style="cyan", no_wrap=True)
+    if not compact:
+        t_running.add_column("ETA", width=10, justify="right", style="green", no_wrap=True)
 
     if not running_links:
-        t_running.add_row("[dim italic]No running links[/]", "", "", "", "-", "-")
+        t_running.add_row(*(["", "[dim italic]No running links[/]", "", "", "-"] if compact else ["", "[dim italic]No running links[/]", "", "", "", "-", "-"]))
     else:
-        for link in running_links:
+        for index, link in enumerate(navigation.visible(0), navigation.offsets[0]):
             progress = transfer_progress(link)
             bar = Text("-", justify="center") if progress.percent is None else ProgressBar(
                 total=100, completed=progress.percent, width=None, style="grey23",
@@ -115,48 +177,57 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
             )
             size_str = f"{utils.human_size(progress.loaded)}/{utils.human_size(progress.total)}"
 
-            t_running.add_row(
-                Text(str(link['name'])),
-                bar, 
-                utils.human_percent(progress.percent), 
-                size_str,
-                f"{utils.human_size(progress.speed)}/s", 
-                utils.human_eta(progress.eta)
-            )
+            row = [row_id(link), Text(' '.join(str(link['name']).splitlines())),
+                   bar, utils.human_percent(progress.percent)]
+            if not compact:
+                row.append(size_str)
+            row.append(f"{utils.human_size(progress.speed)}/s")
+            if not compact:
+                row.append(utils.human_eta(progress.eta))
+            t_running.add_row(*row,
+                style="bold reverse" if navigation.pane == 0 and index == navigation.indices[0] else None)
 
-    panel_running = Panel(t_running, title="Running Links", border_style="white", box=box.ROUNDED)
+
+    panel_running = Panel(t_running, title="Running Links", border_style="cyan" if navigation.pane == 0 else "white", box=box.ROUNDED)
 
     # Enabled unfinished links
     t_enabled = Table(expand=True, box=box.SIMPLE, show_edge=False, pad_edge=False)
+    t_enabled.add_column("ID", width=10 if compact else None, no_wrap=True)
     t_enabled.add_column("Name", ratio=1, no_wrap=True)
-    t_enabled.add_column("Status", ratio=1, style="yellow")
-    t_enabled.add_column("Total Size", width=24, justify="right", style="dim")
+    t_enabled.add_column("Status", ratio=1, style="yellow", no_wrap=True)
+    t_enabled.add_column("Total Size", width=14 if compact else 24, justify="right", style="dim", no_wrap=True)
 
     if not enabled_unfinished_links:
-        t_enabled.add_row("[dim italic]No enabled unfinished links[/]", "-", "-")
+        t_enabled.add_row("", "[dim italic]No enabled unfinished links[/]", "-", "-")
     else:
-        limit = 10
-        for link in enabled_unfinished_links[:limit]:
+        for index, link in enumerate(navigation.visible(1), navigation.offsets[1]):
             status = link.get('status')
             t_enabled.add_row(
-                Text(str(link['name'])),
-                "null" if status is None else str(status),
-                utils.human_size(link.get('bytesTotal'))
+                row_id(link),
+                Text(' '.join(str(link['name']).splitlines())),
+                Text("null" if status is None else " ".join(str(status).splitlines())),
+                utils.human_size(link.get('bytesTotal')),
+                style="bold reverse" if navigation.pane == 1 and index == navigation.indices[1] else None,
             )
-        if len(enabled_unfinished_links) > limit:
-            t_enabled.add_row(f"[italic]...and {len(enabled_unfinished_links)-limit} more[/]", "", "")
 
-    panel_enabled = Panel(t_enabled, title="Enabled Unfinished Links", border_style="dim white", box=box.ROUNDED)
+    panel_enabled = Panel(t_enabled, title="Enabled Unfinished Links", border_style="cyan" if navigation.pane == 1 else "dim white", box=box.ROUNDED)
 
     # Footer
-    footer = Align.center("[dim]Press [bold white]s[/] to Start/Stop  |  [bold white]Ctrl+C[/] to Quit[/]")
-
+    pane = navigation.pane
+    count = len(navigation.rows[pane])
+    first = navigation.offsets[pane] + 1 if count else 0
+    last = min(count, navigation.offsets[pane] + navigation.capacity[pane])
+    label = "Running" if pane == 0 else "Enabled unfinished"
+    footer = Align.center(Text(
+        f"{label}: {first}-{last}/{count} | Selected ID: {navigation.selected_id if navigation.selected_id is not None else '-'}\n"
+        "Up/Down/j/k Move | Tab Pane | PgUp/PgDn | Home/End | s Start/Stop | ^C Quit"
+    ))
     layout = Layout()
     layout.split(
         Layout(header, size=4),
-        Layout(panel_running, ratio=2),
-        Layout(panel_enabled, ratio=1),
-        Layout(footer, size=1)
+        Layout(panel_running, size=pane_heights[0]),
+        Layout(panel_enabled, size=pane_heights[1]),
+        Layout(footer, size=2)
     )
     return layout
 
@@ -177,13 +248,22 @@ def run(client, *, console=None, keyboard=None, clock=None, sleep=None):
 
     try:
         keyboard = KeyboardInput() if keyboard is None else keyboard
+        navigation = Navigation()
+        last_size = [None]
         with keyboard as kbd, Live(console=console, refresh_per_second=4, screen=True) as live:
             def render(snapshot, override_status):
+                size = console.size
+                last_size[0] = size
                 live.update(generate_layout(
                     snapshot.state, snapshot.running_links, snapshot.enabled_unfinished_links,
-                    override_status=override_status,
+                    override_status=override_status, navigation=navigation,
+                    height=size.height, width=size.width,
                 ))
 
-            run_loop(client, get_key=kbd.get_key, render=render, clock=clock, sleep=sleep)
+            def check_resize(snapshot, override_status):
+                if console.size != last_size[0]:
+                    render(snapshot, override_status)
+
+            run_loop(client, get_key=kbd.get_key, render=render, clock=clock, sleep=sleep, handle_key=navigation.handle_key, on_idle=check_resize)
     except KeyboardInterrupt:
         pass

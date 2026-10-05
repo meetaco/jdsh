@@ -48,7 +48,7 @@ Legend:
 | Captcha | See pending captcha | ⚪ | ❌ | Investigate local API surface and headless flow. |
 | Captcha | Submit captcha response | ⚪ | ❌ | Investigate local API surface and 2Captcha interaction. |
 | Reconnect | State / trigger reconnect | ⚪ | ❌ | Investigate API and GUI behavior. |
-| TUI | Select links / packages | ❌ | ❌ | Needed before action parity can be useful in TUI. |
+| TUI | Select links / packages | ❌ | 🟡 | Link-row selection, scrolling and pane switching available; package/multiple selection remains pending. |
 | TUI | Link details / diagnosis pane | ❌ | ❌ | Build on the CLI diagnostics model. |
 
 ## Implementation phases
@@ -94,8 +94,10 @@ in diagnostic JSON.
 ### Phase 5 — TUI
 
 Build the TUI on the same command/service layer rather than reimplementing
-JDownloader behavior. Add selection, package hierarchy, details/diagnosis and
-action shortcuts only after the underlying CLI operations are complete.
+JDownloader behavior. Row navigation now supports Up/Down, j/k, Tab, Page
+Up/Down and Home/End with ID-preserving selection and height-based viewports.
+Package hierarchy, details/diagnosis and action shortcuts remain pending and
+should use the underlying CLI operations.
 
 ## Diagnostic policy
 
