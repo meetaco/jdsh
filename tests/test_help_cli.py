@@ -50,7 +50,7 @@ class CommandHelpTests(unittest.TestCase):
              patch.object(cli, 'JDClient', return_value=client):
             cli.main(['add', '--', '--help'], console=Console(file=io.StringIO()))
         client.connect.return_value.linkgrabber.add_links.assert_called_once_with([{
-            'links': '--help', 'autostart': False, 'priority': 'DEFAULT',
+            'links': '--help', 'autostart': False, 'priority': 'DEFAULT', 'assignJobID': True,
         }])
 
     def test_confirm_reports_move_and_does_not_start_controller(self):
@@ -58,6 +58,6 @@ class CommandHelpTests(unittest.TestCase):
         device.linkgrabber.query_packages.return_value = [{'uuid': 123}]
         output = io.StringIO()
         cli.cmd_confirm(device, None, console=Console(file=output, width=120))
-        self.assertIn('Moved 1 packages to the download queue.', output.getvalue())
+        self.assertIn('Submitted confirm request for 1 package ID.', output.getvalue())
         self.assertIn("jd start", output.getvalue())
         device.downloadcontroller.start_downloads.assert_not_called()

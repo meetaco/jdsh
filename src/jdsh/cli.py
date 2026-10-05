@@ -78,8 +78,18 @@ def cmd_list(device, args, *, console=None):
 
 
 def cmd_grabber(device, args, *, console=None):
-    links = services.list_grabber_links(device)
-    rendering.render_grabber(links, detail=args.detail, console=console)
+    detail = getattr(args, "detail", False) or getattr(args, "as_json", False)
+    options = {"detail": detail, "search": normalize_search(getattr(args, "search", None)),
+               "hosts": getattr(args, "host", None) or (),
+               "availability": getattr(args, "availability", None) or (),
+               "package_ids": getattr(args, "package", None) or (),
+               "job_ids": getattr(args, "job", None) or ()}
+    links = services.list_grabber_links(device, **options)
+    if getattr(args, "as_json", False):
+        print(json.dumps(links, ensure_ascii=False, indent=2, sort_keys=True))
+        return
+    filtered = options["search"] is not None or any(bool(options[key]) for key in ("hosts", "availability", "package_ids", "job_ids"))
+    rendering.render_grabber(links, detail=detail, filtered=filtered, console=console)
 
 
 def cmd_add(device, args, *, console=None):
@@ -88,16 +98,28 @@ def cmd_add(device, args, *, console=None):
         file_path=getattr(args, "file", None),
         use_clipboard=args.clipboard,
     )
-    services.add_to_grabber(device, links)
-    rendering.render_message("Added links to Grabber. Run 'jd confirm' to move them to the queue, then 'jd start' to start or resume downloads.", console=console)
+    job_id = services.add_to_grabber(device, links)
+    rendering.render_message("Submitted links to Grabber. Inspect 'jd grabber', then use 'jd confirm ID' or 'jd confirm --package ID'. Bare 'jd confirm' moves ALL pending packages. Use 'jd start' to start or resume downloads.", console=console)
+
+    if job_id is not None:
+        rendering.render_message(f"Add job ID: {job_id}. Inspect with 'jd grabber --job {job_id}'; crawling may still be in progress.", console=console)
+    else:
+        rendering.render_message("No usable add job ID was returned. Inspect entries with 'jd grabber'.", console=console)
 
 
-def cmd_confirm(device, _, *, console=None):
+def cmd_confirm(device, args, *, console=None):
+    links, packages = getattr(args, "uuids", None) or (), getattr(args, "package", None) or ()
+    if links or packages:
+        selection = services.confirm_grabber_selection(device, links, packages)
+        _render_selection_request("confirm", selection, console=console)
+        rendering.render_message("Use jd ls to inspect the queue; jd start starts or resumes the controller.", console=console)
+        return
     count = services.confirm_grabber(device)
     if not count:
         rendering.render_message("No pending packages.", console=console)
         return
-    rendering.render_message(f"Moved {count} packages to the download queue. Run 'jd start' to start or resume downloads.", console=console)
+    label = "package ID" if count == 1 else "package IDs"
+    rendering.render_message(f"Submitted confirm request for {count} {label}. Run 'jd ls' to inspect the queue; 'jd start' starts or resumes downloads.", console=console)
 
 
 def cmd_remove(device, args, *, console=None):

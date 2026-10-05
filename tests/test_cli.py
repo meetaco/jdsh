@@ -34,6 +34,7 @@ class CmdAddTests(unittest.TestCase):
             "links": "https://a.example,https://b.example",
             "autostart": False,
             "priority": "DEFAULT",
+            "assignJobID": True,
         }])
 
     def test_combines_all_sources_in_order(self):

@@ -19,6 +19,7 @@ from .diagnostics import available_status, diagnose_link
 from .errors import ServiceError
 from .download_selection import download_id, select_downloads
 from .download_values import priority_value, rename_value, directory_value
+from .grabber_view import filter_grabber_links
 from .queue_view import filter_links, normalize_search, sort_rows, summarize_packages
 
 CHECK_TIMEOUT_SECONDS = 30.0
@@ -63,24 +64,65 @@ def list_download_packages(device, *, search=None, states=(), hosts=(),
                      reverse=reverse, packages=True)
 
 
-def list_grabber_links(device) -> List[Dict[str, Any]]:
-    return device.linkgrabber.query_links([GRABBER_LINK_STATE_QUERY.copy()])
+def list_grabber_links(device, *, detail=False, search=None, hosts=(),
+                       availability=(), package_ids=(), job_ids=()):
+    # Validate scope before querying; job association is supplied by JD, not
+    # inferred from names/URLs or before/after snapshots of a shared grabber.
+    packages = list(dict.fromkeys(download_id(value) for value in package_ids))
+    jobs = list(dict.fromkeys(download_id(value) for value in job_ids))
+    query = GRABBER_LINK_STATE_QUERY.copy()
+    if detail:
+        query.update(url=True, bytesTotal=True, comment=True, priority=True,
+                     status=True, variantID=True, variantName=True, variants=True)
+    if packages:
+        query["packageUUIDs"] = packages
+    if jobs:
+        query["jobUUIDs"] = jobs
+    links = device.linkgrabber.query_links([query])
+    return filter_grabber_links(links, search=search, hosts=hosts,
+                               availability=availability, package_ids=packages)
 
 
-def add_to_grabber(device, links: Iterable[str]) -> None:
-    """Submit the collected links in their original order without starting them."""
-    device.linkgrabber.add_links([{
+def add_to_grabber(device, links: Iterable[str]):
+    """Submit once with job association; return a valid server job ID if provided."""
+    result = device.linkgrabber.add_links([{
         "links": ",".join(links), "autostart": False, "priority": "DEFAULT",
+        "assignJobID": True,
     }])
+    if result is False:
+        raise ServiceError("JDownloader did not accept the add request")
+    if isinstance(result, dict) and "id" in result:
+        try:
+            return download_id(result["id"])
+        except ValueError:
+            pass  # Older servers may not provide a usable job ID; never invent one.
+    return None
+
+
+def confirm_grabber_selection(device, link_ids=(), package_ids=()):
+    """Move exactly this explicit selection; never expand to all on empty input."""
+    selection = select_downloads(link_ids, package_ids)
+    result = device.linkgrabber.move_to_downloadlist(list(selection.link_ids), list(selection.package_ids))
+    if result is False:
+        raise ServiceError("JDownloader did not accept the confirm request")
+    return selection
 
 
 def confirm_grabber(device) -> int:
-    """Move all pending packages in one call; return their count after success."""
-    packages = device.linkgrabber.query_packages([{"uuid": True}])
+    """Legacy all-package operation: snapshot IDs and submit one move request."""
+    # uuid/name are set by CrawledPackageAPIStorableV2(pkg) unconditionally;
+    # CrawledPackageQuery has no uuid flag. Optional metadata stays unrequested.
+    packages = device.linkgrabber.query_packages([{"startAt": 0, "maxResults": -1}])
+    if not isinstance(packages, list):
+        raise ServiceError("JDownloader returned an invalid LinkGrabber package list")
     if not packages:
         return 0
-    device.linkgrabber.move_to_downloadlist([], [package["uuid"] for package in packages])
-    return len(packages)
+    if any(not isinstance(package, dict) or "uuid" not in package for package in packages):
+        raise ServiceError("JDownloader returned a LinkGrabber package without a uuid")
+    # Validate every returned ID before any mutation; do not silently omit a
+    # malformed package and claim that all packages were submitted.
+    selection = confirm_grabber_selection(device, package_ids=[package["uuid"] for package in packages])
+    return len(selection.package_ids)
 
 
 def apply_download_action(device, action, link_ids=(), package_ids=()):

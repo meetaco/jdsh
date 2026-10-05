@@ -80,7 +80,7 @@ def print_help(*, console=None):
     table.add_column("Description", style="white")
 
     def add_cmd(name, args, desc):
-        table.add_row(name, args, desc)
+        table.add_row(Text(name), Text(args), Text(desc))
     def add_section(name):
         table.add_row(Text(f"\n{name}", style="bold yellow"))
 
@@ -93,9 +93,9 @@ def print_help(*, console=None):
     add_cmd("show", "<id> [--json]", "Show raw link, package, URL, and diagnosis details")
     add_cmd("why", "<id> [--json]", "Explain why a download is not progressing")
     add_cmd("check", "<id> | --all [--json]", "Force-refresh link availability")
-    add_cmd("grabber", "[-d]", "List pending links inside LinkGrabber")
+    add_cmd("grabber", "[-d] [--json] [filters]", "Inspect LinkGrabber; use jd grabber --help for name, host, package, and job filters")
     add_cmd("add", "[<url>...] [--clipboard] [-f <path>]", "Add links to LinkGrabber (file: one URL per line)")
-    add_cmd("confirm", "", "Move all pending links to Queue")
+    add_cmd("confirm", "[<id>...] [--package <id>] | --all", "Move selected Grabber links/packages; no IDs means all pending packages")
     add_cmd("remove (rm)", "[<id>...] [--package <id>]", "Remove selected links/packages from the queue")
 
     add_section("Controls")
@@ -325,23 +325,29 @@ def render_packages(packages, *, filtered=False, console=None):
     console.print(table)
 
 
-def render_grabber(links, detail=False, *, console=None):
+def render_grabber(links, detail=False, *, filtered=False, console=None):
     console = Console() if console is None else console
     if not links:
-        render_message("LinkGrabber is empty.", console=console)
+        render_message("No LinkGrabber links match the filters." if filtered else "LinkGrabber is empty.", console=console)
         return
     table = Table(title=f"Pending Links ({len(links)})", box=box.SIMPLE)
-    table.add_column("ID", style="dim")
-    table.add_column("Name")
-    if detail: table.add_column("URL", style="blue")
-
-    for l in links:
-        row = [str(l['uuid']), Text(str(l['name']))]
-        if detail: row.append(l.get('url', ''))
+    for label in ("ID", "Package ID", "Enabled", "Availability", "Host", "Name"):
+        table.add_column(label)
+    for link in links:
+        enabled = link.get("enabled")
+        row = [Text(str(link.get("uuid", "UNKNOWN"))), Text(str(link.get("packageUUID", "UNKNOWN"))),
+               "YES" if enabled is True else "NO" if enabled is False else "UNKNOWN",
+               Text(str(link.get("availability") or "NOT REPORTED")),
+               Text(str(link.get("host") or "UNKNOWN")), Text(str(link.get("name") or ""))]
         table.add_row(*row)
-
     console.print(table)
-    console.print("\n[green]Run 'jd confirm' to move pending links to the queue, then 'jd start' to start or resume downloads.[/]")
+    if detail:
+        for link in links:
+            console.print(Panel(Text(json.dumps(link, ensure_ascii=False, indent=2, sort_keys=True)),
+                                title=Text(f"LinkGrabber link {link.get('uuid', 'UNKNOWN')}")))
+    render_message("Use 'jd confirm ID' or 'jd confirm --package ID' to move specific Grabber entries. "
+                   "Bare 'jd confirm' / 'jd confirm --all' moves ALL pending packages, regardless of listing filters. "
+                   "Use 'jd start' to start or resume the controller; JD auto-start settings may also apply.", console=console)
 
 
 def render_status(state, links, *, console=None):

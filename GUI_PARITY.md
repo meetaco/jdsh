@@ -30,8 +30,8 @@ Legend:
 | Downloads | Stop mark | ❌ | ❌ | Exposed by downloadsV2. |
 | Downloads | Comments | 🟡 | ❌ | Readable in detailed output; mutation not exposed. |
 | LinkGrabber | List links | ✅ | ❌ | Existing `jd grabber`. |
-| LinkGrabber | Add / confirm links | ✅ | ❌ | Existing `jd add`, `jd confirm`. |
-| LinkGrabber | Inspect full state | ❌ | ❌ | Bring to parity with Downloads. |
+| LinkGrabber | Add / confirm links | ✅ | ❌ | `jd add` prints server job ID; `jd confirm ID` / `--package ID`; bare confirm remains all. |
+| LinkGrabber | Inspect full state | 🟡 | ❌ | `jd grabber` state, host/name/availability/package/job filters, `-d` / `--json`; dedicated package view remains pending. |
 | LinkGrabber | Enable / disable / priority | ❌ | ❌ | Implement after Downloads actions. |
 | LinkGrabber | Rename / move / destination | ❌ | ❌ | Implement after Downloads actions. |
 | LinkGrabber | Variants | ❌ | ❌ | Needs command design. |
@@ -80,7 +80,10 @@ Move/reorder, stop marks, and comments remain pending.
 ### Phase 3 — LinkGrabber
 
 Bring LinkGrabber inspection and actions to roughly the same level as Downloads,
-including variants where the upstream API supports them.
+including variants where the upstream API supports them. CLI inspection now
+shows raw LinkGrabber state and supports filters plus selective confirmation.
+`jd add` requests job association and exposes the returned ID for `grabber --job`.
+Dedicated package summaries and LinkGrabber editing actions remain pending.
 
 ### Phase 4 — accounts, extraction and settings
 

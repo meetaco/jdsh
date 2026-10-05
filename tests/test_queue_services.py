@@ -82,7 +82,7 @@ class QueueServiceTests(unittest.TestCase):
         device.linkgrabber.query_links.return_value = links
         self.assertIs(services.list_grabber_links(device), links)
         device.linkgrabber.query_links.assert_called_once_with([
-            {"name": True, "uuid": True, "url": True},
+            dict(GRABBER_LINK_STATE_QUERY),
         ])
 
     def test_add_preserves_duplicates_order_and_does_not_autostart(self):
@@ -91,7 +91,7 @@ class QueueServiceTests(unittest.TestCase):
         services.add_to_grabber(device, links)
         self.assertEqual(device.mock_calls, [call.linkgrabber.add_links([{
             "links": "https://a.example,https://b.example,https://a.example",
-            "autostart": False, "priority": "DEFAULT",
+            "autostart": False, "priority": "DEFAULT", "assignJobID": True,
         }])])
         self.assertEqual(links, ["https://a.example", "https://b.example", "https://a.example"])
 
@@ -100,7 +100,7 @@ class QueueServiceTests(unittest.TestCase):
         device.linkgrabber.query_packages.return_value = [{"uuid": 8}, {"uuid": 3}]
         self.assertEqual(services.confirm_grabber(device), 2)
         self.assertEqual(device.mock_calls, [
-            call.linkgrabber.query_packages([{"uuid": True}]),
+            call.linkgrabber.query_packages([{"startAt": 0, "maxResults": -1}]),
             call.linkgrabber.move_to_downloadlist([], [8, 3]),
         ])
 
@@ -108,7 +108,7 @@ class QueueServiceTests(unittest.TestCase):
         device = MagicMock()
         device.linkgrabber.query_packages.return_value = []
         self.assertEqual(services.confirm_grabber(device), 0)
-        self.assertEqual(device.mock_calls, [call.linkgrabber.query_packages([{"uuid": True}])])
+        self.assertEqual(device.mock_calls, [call.linkgrabber.query_packages([{"startAt": 0, "maxResults": -1}])])
 
     def test_remove_and_clear_keep_distinct_selection_scopes(self):
         device = MagicMock()
