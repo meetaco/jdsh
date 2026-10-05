@@ -23,6 +23,10 @@ class Snapshot:
     last_success_at: Optional[float] = None
     consecutive_failures: int = 0
 
+    @property
+    def is_available(self):
+        return self.error is None and self.state not in ("CONNECTING...", "ERROR")
+
 
 def refresh_status(snapshot, now):
     """Describe poll health using monotonic elapsed time, not download state."""
@@ -82,7 +86,7 @@ class DashboardController:
 
     @property
     def can_navigate(self):
-        return self.snapshot.error is None and self.snapshot.state not in ("CONNECTING...", "ERROR")
+        return self.snapshot.is_available
 
     @property
     def toggle_feedback(self):

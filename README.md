@@ -70,7 +70,9 @@ but keyboard handling and new status results wait for that request to finish.
 Select a row and press `d` to open details for that link using the same diagnostic
 service as `jd why ID`. The view shows the name, controller state, diagnosis,
 reason and its source (`jdownloader`, `inferred`, or `unknown`), availability,
-status and extraction state. Server text is displayed literally.
+status and extraction state. Rich markup in server text is displayed literally, and embedded newlines are
+preserved (CR/CRLF become LF). Other C0/C1 terminal control characters are
+replaced with `?`.
 
 Details are captured on demand. Press `d` again to refresh the displayed ID,
 `j/k` or Up/Down to scroll, Page Up/Down or Home/End to move through long reasons,
@@ -83,7 +85,11 @@ After a status polling failure the view warns that captured details may be stale
 Scrolling and `q` remain available; `d` is ignored until status polling recovers.
 Empty panes do not trigger a detail query. No availability check or per-link
 operation is performed. `s` still controls the global download controller.
-Detail requests are synchronous, like ordinary status requests.
+Detail requests are synchronous, like ordinary status requests. A loading
+message is drawn before each detail request. After `s`, the details view and
+footer indicate that captured controller/diagnosis information needs an explicit
+`d` refresh; no extra detail query is triggered. Lowercase ASCII `d` and `q` are
+the supported detail shortcuts.
 
 ### TUI navigation
 

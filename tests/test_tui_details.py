@@ -8,7 +8,7 @@ from rich.console import Console
 
 from jdsh import services, tui
 from jdsh.errors import StatsError
-from jdsh.tui_details import Details
+from jdsh.tui_details import Details, display_text
 from jdsh.tui_navigation import Navigation
 
 
@@ -90,13 +90,15 @@ class DetailsTests(unittest.TestCase):
         self.assertIn('Details ID: 1', output.getvalue())
         self.assertEqual(nav.selected_id, 1)
 
-    def run_keys(self, keys, snapshots):
+    def run_keys(self, keys, snapshots, query_observer=None):
         client = MagicMock()
         client.settings = SimpleNamespace(refresh_rate=0.1)
         client.device = self.device()
         client.fetch_stats.side_effect = snapshots
         live, keyboard = MagicMock(), MagicMock()
         live.__enter__.return_value = live
+        if query_observer is not None:
+            client.device.downloads.query_links.side_effect = lambda *args: query_observer(live) or [link()]
         events = iter(keys)
         def get_key():
             try:
@@ -155,6 +157,96 @@ class DetailsTests(unittest.TestCase):
         Console(file=output, width=80, height=18).print(live.update.call_args.args[0])
         self.assertIn('ERROR: offline', output.getvalue())
         self.assertNotIn('Link details / diagnosis', output.getvalue())
+
+    def test_newlines_preserved_controls_neutralized_and_no_trailing_blank(self):
+        details, device = Details(), self.device()
+        device.downloads.query_links.return_value[0]['name'] = '[red]line 1\nline 2[/red]'
+        device.downloads.query_links.return_value[0]['status'] = '\x1b[31mstatus\x1b]0;title\x07\x9b\x00'
+        details.fetch(device, 1)
+        panel = details.panel(100, 34)
+        text = '\n'.join(line.plain for line in details.lines)
+        self.assertIn('[red]line 1\nline 2[/red]', text)
+        self.assertNotIn('\x1b', text)
+        self.assertNotIn('\x9b', text)
+        self.assertNotIn('\x00', text)
+        self.assertIn('?[31mstatus?', text)
+        self.assertTrue(details.lines[-1].plain)
+        self.assertEqual(display_text('a\r\nb\rc\td'), 'a\nb\nc?d')
+
+    def test_close_resets_viewport_and_reuses_supplied_console(self):
+        from jdsh import tui_details
+        console = Console(file=io.StringIO(), width=80)
+        with patch.object(tui_details, 'Console', side_effect=AssertionError('reuse supplied console')):
+            details = Details(console)
+            details.fetch(self.device(), 1)
+            details.panel(80, 12)
+            details.scroll('end')
+            details.panel(100, 20)
+            details.close()
+        self.assertEqual((details.offset, details.lines, details.capacity), (0, [], 1))
+        self.assertIn('Lines: 0-0/0', details.footer().plain)
+
+    def test_missing_or_invalid_diagnosis_does_not_crash_display(self):
+        for diagnosis in (None, [], 'unexpected'):
+            details = Details()
+            details.link_id = 1
+            details.payload = {'name': 'file', 'diagnosis': diagnosis}
+            details.panel(80, 12)
+            self.assertIn('Diagnosis: not provided', '\n'.join(line.plain for line in details.lines))
+        details.payload.pop('diagnosis')
+        details.panel(80, 12)
+
+    def test_controller_query_failure_remains_nonfatal_and_unknown(self):
+        device, details = self.device(), Details()
+        device.downloadcontroller.get_current_state.side_effect = RuntimeError('offline')
+        details.fetch(device, 1)
+        self.assertIsNone(details.error)
+        self.assertIsNone(details.payload['controllerState'])
+        self.assertEqual(details.payload['diagnosis']['source'], 'jdownloader')
+
+    def test_loading_frame_is_refreshed_before_query(self):
+        observed = []
+        def observe(live):
+            call = live.update.call_args
+            self.assertTrue(call.kwargs['refresh'])
+            output = io.StringIO()
+            Console(file=output, width=80, height=18).print(call.args[0])
+            observed.append(output.getvalue())
+        client, live = self.run_keys(['d'], [('RUNNING', [], [link()])], observe)
+        self.assertIn('Loading details', observed[0])
+        client.device.downloads.query_links.assert_called_once()
+
+    def test_tab_with_both_panes_keeps_queue_selection(self):
+        client, live = self.run_keys(['d', '\t', 'q'], [('RUNNING', [link()], [link(2)])])
+        output = io.StringIO()
+        Console(file=output, width=80, height=18).print(live.update.call_args.args[0])
+        self.assertIn('Selected ID: 1', output.getvalue())
+        self.assertIn('Running: 1-1/1', output.getvalue())
+
+    def test_unhandled_detail_keys_never_reach_queue_navigation(self):
+        snapshots = [('RUNNING', [], [link()])] * 2
+        with patch.object(Navigation, 'handle_key', autospec=True, return_value=True) as handler:
+            self.run_keys(['d', 'future-key', 'q'], snapshots)
+        handler.assert_not_called()
+
+    def test_controller_action_marks_capture_stale_until_explicit_refresh(self):
+        client, live = self.run_keys(['d', 's'], [('RUNNING', [], [link()]), ('STOPPED', [], [link()])])
+        output = io.StringIO()
+        Console(file=output, width=80, height=18).print(live.update.call_args.args[0])
+        self.assertIn('Controller action requested', output.getvalue())
+        self.assertIn('Refresh needed', output.getvalue())
+        client.device.downloads.query_links.assert_called_once()
+        details = Details()
+        details.fetch(self.device(), 1)
+        details.controller_requested = True
+        details.fetch(self.device(), 1)
+        self.assertFalse(details.controller_requested)
+
+    def test_unexpected_service_programming_error_is_not_hidden(self):
+        details = Details()
+        with patch.object(services, 'explain_download', side_effect=RuntimeError('programming failure')):
+            with self.assertRaisesRegex(RuntimeError, 'programming failure'):
+                details.fetch(self.device(), 1)
 
 
 if __name__ == '__main__':

@@ -180,7 +180,8 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
     )
 
     if details is not None and details.is_open:
-        panel = details.panel(width, body_height, polling_failed=state == "ERROR")
+        polling_failed = not refresh_snapshot.is_available if refresh_snapshot is not None else state == "ERROR"
+        panel = details.panel(width, body_height, polling_failed=polling_failed)
         layout = Layout()
         layout.split(Layout(header, size=4), Layout(panel, size=body_height),
                      Layout(Align.center(details.footer()), size=2))
@@ -286,10 +287,10 @@ def run(client, *, console=None, keyboard=None, clock=None, sleep=None):
     try:
         keyboard = KeyboardInput() if keyboard is None else keyboard
         navigation = Navigation()
-        details = Details()
+        details = Details(console)
         last_size = [None]
         with keyboard as kbd, Live(console=console, refresh_per_second=4, screen=True) as live:
-            def render(snapshot, override_status):
+            def render(snapshot, override_status, *, refresh=False):
                 size = console.size
                 last_size[0] = size
                 live.update(generate_layout(
@@ -298,7 +299,7 @@ def run(client, *, console=None, keyboard=None, clock=None, sleep=None):
                     height=size.height, width=size.width,
                     refresh_snapshot=snapshot, refresh_clock=clock,
                     details=details,
-                ))
+                ), refresh=refresh)
 
             def on_idle_refresh(snapshot, override_status):
                 if console.size != last_size[0]:
@@ -311,17 +312,24 @@ def run(client, *, console=None, keyboard=None, clock=None, sleep=None):
                 if details.is_open and details.scroll(key):
                     return True
                 if details.is_open and key == "\t":
-                    return True  # Pane switching resumes after returning to the queue.
+                    return True  # Pane switching resumes after closing details.
                 if key == "d":
                     # Detail reads are explicit and do not run during poll errors.
-                    available = snapshot.error is None and snapshot.state not in ("CONNECTING...", "ERROR")
                     target = details.link_id if details.is_open else navigation.selected_id
-                    if available and target is not None:
+                    if snapshot.is_available and target is not None:
+                        render(snapshot, "Loading details", refresh=True)
                         details.fetch(client.device, target)
                     return True
+                if details.is_open and key == "s" and snapshot.is_available:
+                    details.controller_requested = True
                 return False
 
+            def handle_navigation(key):
+                # Detail mode never forwards keys to the hidden queue, including
+                # future navigation shortcuts. Unhandled keys retain normal sleep.
+                return not details.is_open and navigation.handle_key(key)
+
             run_loop(client, get_key=kbd.get_key, render=render, clock=clock, sleep=sleep,
-                     handle_key=navigation.handle_key, on_idle=on_idle_refresh, handle_view_key=handle_view_key)
+                     handle_key=handle_navigation, on_idle=on_idle_refresh, handle_view_key=handle_view_key)
     except KeyboardInterrupt:
         pass
