@@ -68,7 +68,7 @@ class DashboardController:
             state=state, running_links=running,
             enabled_unfinished_links=unfinished, error=error,
             last_success_at=last_success,
-            consecutive_failures=previous.consecutive_failures + 1 if error else 0,
+            consecutive_failures=previous.consecutive_failures + 1 if error is not None else 0,
         )
 
     def expire_error(self, now):

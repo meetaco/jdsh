@@ -44,18 +44,26 @@ jd
 ### TUI refresh and retry feedback
 
 The dashboard header shows `Live | Last success: Ns ago` after a successful
-status refresh. The age uses elapsed time and updates once per second between
-polls, without extra API requests. `Live` means the last status poll succeeded;
+status refresh. The age uses elapsed time and is calculated during Rich redraws (four per
+second), including while a status request is waiting for a response, without
+extra API requests. `Live` means the last status poll succeeded;
 it does not mean that downloads are running.
 
 A failed poll shows `Retrying (N failures)` and the age of the last successful
 refresh. Before any successful poll it says `No successful refresh yet`.
+A single failure is shown as `Retrying (1 failure)`.
 The counter counts consecutive failed status polls and resets on recovery;
 start/stop operation failures do not affect it. JDSH retries status requests
 through the existing connection at the configured refresh interval. This does
 not establish a new connection or perform a download action. Failed polls keep
 both panes empty and disable navigation/start/stop until status polling recovers;
 the saved selection is retained for recovery.
+
+The default clock is `time.monotonic()`, unaffected by wall-clock changes.
+Suspend time may be excluded on some systems (including Linux), so the age
+and poll schedule do not guarantee real elapsed time across system suspend.
+Status requests remain synchronous: age redraws continue during a slow request,
+but keyboard handling and new status results wait for that request to finish.
 
 ### TUI navigation
 

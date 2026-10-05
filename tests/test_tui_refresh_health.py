@@ -1,6 +1,8 @@
 """Poll freshness and retry feedback without JD or a terminal session."""
 
 import io
+import os
+import threading
 import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -76,6 +78,40 @@ class RefreshHealthTests(unittest.TestCase):
                          'Live | Last success: 3s ago')
         self.assertTrue(self.controller.can_navigate)
 
+    def test_poll_failure_outlives_operation_error_deadline(self):
+        self.controller.poll()
+        self.client.toggle_state.side_effect = ServiceError('denied')
+        self.controller.toggle()
+        self.client.fetch_stats.side_effect = StatsError('offline')
+        self.controller.poll()
+        self.controller.expire_error(100)
+        self.assertIsNone(self.controller.operation_error)
+        self.assertEqual(self.controller.snapshot.error, 'ERROR: offline')
+        self.assertEqual(refresh_status(self.controller.snapshot, 100),
+                         'Retrying (1 failure) | Last success: 100s ago')
+
+    def test_successful_toggle_keeps_health_until_next_poll(self):
+        self.controller.poll()
+        previous = self.controller.snapshot
+        self.now = 10
+        self.controller.toggle()
+        self.client.toggle_state.assert_called_once_with('STOPPED')
+        self.assertIs(self.controller.snapshot, previous)
+        self.assertEqual(refresh_status(self.controller.snapshot, 10),
+                         'Live | Last success: 10s ago')
+        self.controller.poll()
+        self.assertEqual(self.controller.snapshot.last_success_at, 10)
+        self.assertEqual(self.controller.snapshot.consecutive_failures, 0)
+
+    def test_default_run_clock_is_monotonic(self):
+        keyboard, live, console = MagicMock(), MagicMock(), MagicMock()
+        clock = MagicMock(return_value=0)
+        with patch.object(tui, 'Live', return_value=live), \
+             patch.object(tui.time, 'monotonic', clock), \
+             patch.object(tui, 'run_loop') as run_loop:
+            tui.run(self.client, console=console, keyboard=keyboard)
+        self.assertIs(run_loop.call_args.kwargs['clock'], clock)
+
     def test_age_is_nonnegative_and_does_not_depend_on_wall_time(self):
         snapshot = Snapshot('STOPPED', [], [], last_success_at=100)
         self.assertIn('0s ago', refresh_status(snapshot, 99))
@@ -118,12 +154,68 @@ class RefreshHealthTests(unittest.TestCase):
                     clock=lambda: self.now, sleep=sleep)
         self.client.fetch_stats.assert_called_once()
         self.client.toggle_state.assert_not_called()
-        self.assertEqual(live.update.call_count, 4)  # loading, success, 1s, 2s
         output = io.StringIO()
         Console(file=output, width=80, height=18).print(live.update.call_args.args[0])
         self.assertIn('Live | Last success: 2s ago', output.getvalue())
         live.__exit__.assert_called_once()
         keyboard.__exit__.assert_called_once()
+
+    def test_real_live_refresh_advances_age_during_blocked_fetch(self):
+        observed_age = threading.Event()
+        in_fetch = [False]
+        class RecordingOutput(io.StringIO):
+            def write(stream, value):
+                result = super().write(value)
+                if in_fetch[0] and 'Last success: 10s ago' in value:
+                    observed_age.set()
+                return result
+        output = RecordingOutput()
+        console = Console(file=output, force_terminal=True, force_interactive=True,
+                          color_system=None, width=80, height=18)
+        self.client.settings = SimpleNamespace(refresh_rate=0.1)
+        observed_before_return = []
+        def slow_fetch():
+            if self.client.fetch_stats.call_count == 1:
+                return 'STOPPED', [], []
+            in_fetch[0] = True
+            self.now = 10
+            # The real Rich refresh thread must render while this call is blocked.
+            observed_before_return.append(observed_age.wait(timeout=3))
+            in_fetch[0] = False
+            return 'STOPPED', [], []
+        self.client.fetch_stats.side_effect = slow_fetch
+        keyboard = MagicMock()
+        def get_key():
+            if self.client.fetch_stats.call_count >= 2:
+                raise KeyboardInterrupt
+            return None
+        keyboard.__enter__.return_value.get_key.side_effect = get_key
+        def sleep(value):
+            self.now += value
+        # CI shells may expose TERM=dumb even with force_terminal=True.
+        with patch.dict(os.environ, {'TERM': 'xterm'}):
+            tui.run(self.client, console=console, keyboard=keyboard,
+                    clock=lambda: self.now, sleep=sleep)
+        self.assertEqual(observed_before_return, [True])
+        self.assertEqual(self.client.fetch_stats.call_count, 2)
+        self.client.toggle_state.assert_not_called()
+        keyboard.__exit__.assert_called_once()
+
+    def test_refresh_header_samples_clock_once_and_does_not_mutate_navigation(self):
+        nav = Navigation()
+        nav.sync([{'uuid': 1, 'name': 'file', 'running': True}], [])
+        snapshot = Snapshot('RUNNING', nav.rows[0], [], last_success_at=0)
+        clock = MagicMock(return_value=2)
+        layout = tui.generate_layout('RUNNING', snapshot.running_links, [],
+                                     navigation=nav, refresh_snapshot=snapshot,
+                                     refresh_clock=clock)
+        before = (nav.selected_id, nav.indices[:], nav.offsets[:], nav.capacity[:])
+        output = io.StringIO()
+        console = Console(file=output, width=100, height=25)
+        console.print(layout)
+        clock.assert_called_once_with()
+        self.assertIn('Last success: 2s ago', output.getvalue())
+        self.assertEqual(before, (nav.selected_id, nav.indices, nav.offsets, nav.capacity))
 
 
 if __name__ == '__main__':
