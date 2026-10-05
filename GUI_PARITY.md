@@ -20,9 +20,9 @@ Legend:
 | Downloads | Explain idle/waiting link | ✅ | ❌ | `jd why <id>` distinguishes JD-provided, inferred and unknown reasons. |
 | Downloads | Availability re-check | ✅ | ❌ | `jd check <id>` / `jd check --all`. |
 | Downloads | Start / stop controller | ✅ | ✅ | Existing controls. |
-| Downloads | Enable / disable selection | ❌ | ❌ | downloadsV2 `setEnabled`. |
-| Downloads | Force download | ❌ | ❌ | downloadsV2/downloadcontroller force endpoint. |
-| Downloads | Resume / reset / unskip | ❌ | ❌ | Exposed by downloadsV2. |
+| Downloads | Enable / disable selection | ✅ | ❌ | `jd enable` / `jd disable`, link IDs and `--package`. |
+| Downloads | Force download | ✅ | ❌ | `jd force`, link IDs and `--package`. |
+| Downloads | Resume / reset / unskip | 🟡 | ❌ | `jd resume` available; reset and unskip remain pending. |
 | Downloads | Rename link / package | ❌ | ❌ | Exposed by downloadsV2. |
 | Downloads | Priority | ❌ | ❌ | Exposed by downloadsV2. |
 | Downloads | Download directory | 🟡 | ❌ | Visible via package details; mutation not exposed. |
@@ -68,6 +68,13 @@ Legend:
 Expose existing downloadsV2 operations with consistent link/package selection:
 enable/disable, force, resume, reset, unskip, rename, priority, destination,
 move/reorder, stop mark and comments.
+
+Enable/disable, resume, force, and queue removal now share explicit link/package
+selection. `unskip` remains pending investigation: the public API documentation
+and interface advertise package IDs before link IDs, while the published
+implementation treats the first array as link IDs. Resolve compatibility before
+exposing this operation, to avoid applying it to the wrong selection. Reset,
+rename, priority, destination, and the remaining actions will follow separately.
 
 ### Phase 3 — LinkGrabber
 

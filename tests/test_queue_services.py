@@ -115,7 +115,7 @@ class QueueServiceTests(unittest.TestCase):
         services.remove_downloads(device, ["8", "3"])
         services.clear_finished_downloads(device)
         self.assertEqual(device.mock_calls, [
-            call.downloads.remove_links(["8", "3"], []),
+            call.downloads.remove_links([8, 3], []),
             call.downloads.cleanup("DELETE_FINISHED", "REMOVE_LINKS_ONLY", "ALL", [], []),
         ])
 

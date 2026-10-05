@@ -96,9 +96,12 @@ def print_help(*, console=None):
     add_cmd("grabber", "[-d]", "List pending links inside LinkGrabber")
     add_cmd("add", "[<url>...] [--clipboard] [-f <path>]", "Add links to LinkGrabber (file: one URL per line)")
     add_cmd("confirm", "", "Move all pending links to Queue")
-    add_cmd("remove (rm)", "<uuid>...", "Remove items by ID")
+    add_cmd("remove (rm)", "[<id>...] [--package <id>]", "Remove selected links/packages from the queue")
 
     add_section("Controls")
+    add_cmd("enable / disable", "[<id>...] [--package <id>]", "Enable/disable selected download links or packages")
+    add_cmd("resume", "[<id>...] [--package <id>]", "Request resume for selected links or packages")
+    add_cmd("force", "[<id>...] [--package <id>]", "Request forced download for selected links or packages")
     add_cmd("start", "", "Start/Resume downloads")
     add_cmd("stop", "", "Stop downloads")
     add_cmd("clear", "", "Remove finished items from list")

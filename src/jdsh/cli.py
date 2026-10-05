@@ -101,8 +101,22 @@ def cmd_confirm(device, _, *, console=None):
 
 
 def cmd_remove(device, args, *, console=None):
-    services.remove_downloads(device, args.uuids)
-    rendering.render_message(f"Removed {len(args.uuids)} items.", console=console)
+    selection = services.remove_downloads(device, args.uuids, getattr(args, "package", None) or ())
+    _render_selection_request("remove", selection, console=console)
+
+
+def _render_selection_request(action, selection, *, console=None):
+    rendering.render_message(
+        f"Submitted {action} request for {len(selection.link_ids)} link IDs and "
+        f"{len(selection.package_ids)} package IDs.", console=console,
+    )
+
+
+def cmd_download_action(device, args, *, console=None):
+    selection = services.apply_download_action(
+        device, args.command, args.uuids, args.package or (),
+    )
+    _render_selection_request(args.command, selection, console=console)
 
 
 def cmd_replace(device, args, *, console=None):
@@ -171,6 +185,8 @@ def _main(argv, console=None):
         'add': cmd_add, 'remove': cmd_remove, 'rm': cmd_remove,
         'replace': cmd_replace, 'start': cmd_simple,
         'stop': cmd_simple, 'clear': cmd_simple,
+        'enable': cmd_download_action, 'disable': cmd_download_action,
+        'resume': cmd_download_action, 'force': cmd_download_action,
         'version': cmd_version,
     }
     handler = actions.get(args.command)
