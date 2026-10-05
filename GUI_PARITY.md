@@ -17,7 +17,7 @@ Legend:
 | --- | --- | :---: | :---: | --- |
 | Downloads | Queue listing | ✅ | 🟡 | CLI now shows state, availability, host and reason; TUI remains limited. |
 | Downloads | Raw link details | ✅ | ❌ | `jd ls -d`, `jd show <id>`. |
-| Downloads | Explain idle/waiting link | ✅ | ❌ | `jd why <id>` distinguishes JD-provided, inferred and unknown reasons. |
+| Downloads | Explain idle/waiting link | ✅ | ✅ | `jd why <id>` distinguishes JD-provided, inferred and unknown reasons. |
 | Downloads | Availability re-check | ✅ | ❌ | `jd check <id>` / `jd check --all`. |
 | Downloads | Start / stop controller | ✅ | ✅ | Existing controls. |
 | Downloads | Enable / disable selection | ✅ | ❌ | `jd enable` / `jd disable`, link IDs and `--package`. |
@@ -49,7 +49,7 @@ Legend:
 | Captcha | Submit captcha response | ⚪ | ❌ | Investigate local API surface and 2Captcha interaction. |
 | Reconnect | State / trigger reconnect | ⚪ | ❌ | Investigate API and GUI behavior. |
 | TUI | Select links / packages | ❌ | 🟡 | Link-row selection, scrolling and pane switching available; package/multiple selection remains pending. |
-| TUI | Link details / diagnosis pane | ❌ | ❌ | Build on the CLI diagnostics model. |
+| TUI | Link details / diagnosis pane | ❌ | ✅ | d opens read-only selected-link diagnosis using the CLI service; q returns. |
 
 ## Implementation phases
 
@@ -61,7 +61,7 @@ Legend:
 - [x] Surface state, availability and reason in the default list.
 - [x] Add `jd why <id>`.
 - [x] Add package-oriented queue view and filters/sorting (`jd ls --packages`, `--search`, `--state`, `--host`, `--sort`).
-- [ ] Improve TUI state/diagnosis visibility.
+- [x] Improve TUI state/diagnosis visibility with on-demand selected-link details.
 
 ### Phase 2 — download actions
 
@@ -98,8 +98,9 @@ JDownloader behavior. Row navigation now supports Up/Down, j/k, Tab, Page
 Up/Down and Home/End with ID-preserving selection and height-based viewports.
 The header now shows last successful refresh age and consecutive failed status
 polls, with retry feedback and recovery through the existing connection.
-Package hierarchy, details/diagnosis and action shortcuts remain pending and
-should use the underlying CLI operations.
+Selected-link details/diagnosis now use the same service as jd why, with explicit
+refresh and scrollable text. Package hierarchy and action shortcuts remain
+pending and should use the underlying CLI operations.
 
 ## Diagnostic policy
 
