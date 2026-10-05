@@ -121,27 +121,27 @@ class CLIErrorTests(unittest.TestCase):
 
 
 class ReplacementTests(unittest.TestCase):
-    def test_removal_failure_prevents_addition(self):
+    def test_removal_failure_reports_added_replacement(self):
         device = MagicMock()
         device.downloads.remove_links.side_effect = RuntimeError('remove denied')
-        with self.assertRaisesRegex(services.ReplacementError, 'Failed to remove original'):
+        with self.assertRaisesRegex(services.ReplacementError, 'Replacement was added, but removing original'):
             services.replace_download(device, '123', 'https://example.org')
-        device.linkgrabber.add_links.assert_not_called()
+        device.linkgrabber.add_links.assert_called_once()
 
-    def test_addition_failure_reports_removed_original(self):
+    def test_addition_failure_keeps_original(self):
         device = MagicMock()
         device.linkgrabber.add_links.side_effect = RuntimeError('add denied')
-        with self.assertRaisesRegex(services.ReplacementError, 'was removed, but adding'):
+        with self.assertRaisesRegex(services.ReplacementError, 'original was not removed'):
             services.replace_download(device, '123', 'https://example.org')
-        device.downloads.remove_links.assert_called_once_with(['123'], [])
+        device.downloads.remove_links.assert_not_called()
 
     def test_success_keeps_existing_api_order_and_parameters(self):
         device = MagicMock()
         services.replace_download(device, '123', 'https://example.org')
         from unittest.mock import call
         self.assertEqual(device.mock_calls, [
-            call.downloads.remove_links(['123'], []),
             call.linkgrabber.add_links([{'links': 'https://example.org', 'autostart': True, 'packageName': 'Rep_123'}]),
+            call.downloads.remove_links([123], []),
         ])
 
 
@@ -237,7 +237,7 @@ class DebugAndStartupTests(unittest.TestCase):
                 cli.main(['replace', '123', 'https://example.org'])
         self.assertEqual(caught.exception.code, 1)
         self.assertEqual(stdout.getvalue(), '')
-        self.assertIn('was removed, but adding', stderr.getvalue())
+        self.assertIn('original was not removed', stderr.getvalue())
 
     def test_clipboard_error_uses_common_application_base(self):
         from jdsh.clipboard import ClipboardError

@@ -106,22 +106,25 @@ def cmd_remove(device, args, *, console=None):
 
 
 def _render_selection_request(action, selection, *, console=None):
+    links, packages = len(selection.link_ids), len(selection.package_ids)
+    link_label = "link ID" if links == 1 else "link IDs"
+    package_label = "package ID" if packages == 1 else "package IDs"
     rendering.render_message(
-        f"Submitted {action} request for {len(selection.link_ids)} link IDs and "
-        f"{len(selection.package_ids)} package IDs.", console=console,
+        f"Submitted {action} request for {links} {link_label} and "
+        f"{packages} {package_label}.", console=console,
     )
 
 
 def cmd_download_action(device, args, *, console=None):
     selection = services.apply_download_action(
-        device, args.command, args.uuids, args.package or (),
+        device, args.command, args.uuids, getattr(args, "package", None) or (),
     )
     _render_selection_request(args.command, selection, console=console)
 
 
 def cmd_replace(device, args, *, console=None):
     services.replace_download(device, args.uuid, args.url)
-    rendering.render_message("Link replaced and restarted.", console=console)
+    rendering.render_message("Replacement URL added and original queue entry removed.", console=console)
 
 
 def cmd_simple(device, args, *, console=None):

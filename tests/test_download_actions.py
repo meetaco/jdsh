@@ -129,5 +129,114 @@ class ActionServiceTests(unittest.TestCase):
                      patch.object(cli, 'JDClient', return_value=client):
                     cli.main([command, '3', '3', '--package', '8'], console=Console(file=output, width=120))
                 action = 'remove' if command == 'rm' else command
-                self.assertIn(f'Submitted {action} request for 1 link IDs and 1 package IDs.', output.getvalue())
+                self.assertIn(f'Submitted {action} request for 1 link ID and 1 package ID.', output.getvalue())
                 client.connect.return_value.downloadcontroller.start_downloads.assert_not_called()
+
+
+class ReviewRegressionTests(unittest.TestCase):
+    INVALID_TEXT_IDS = ('1_2', '+5', ' 5 ', '１２３', '١٢٣', '', '\t5')
+
+    def test_nondecimal_text_cannot_select_another_id(self):
+        for value in self.INVALID_TEXT_IDS:
+            for links, packages in (([value], []), ([], [value])):
+                device = MagicMock()
+                with self.subTest(value=value, links=links), self.assertRaises(ValueError):
+                    services.apply_download_action(device, 'remove', links, packages)
+                self.assertEqual(device.mock_calls, [])
+        self.assertEqual(select_downloads(['00012']).link_ids, (12,))
+
+    def test_cli_rejects_bad_text_before_config_or_client(self):
+        for command in SELECTED_COMMANDS + ('replace',):
+            for value in self.INVALID_TEXT_IDS:
+                tails = [[value, 'https://example.org']] if command == 'replace' else [[value], ['--package', value]]
+                for tail in tails:
+                    with self.subTest(command=command, tail=tail), \
+                         patch.object(cli.config, 'load_settings') as settings, \
+                         patch.object(cli, 'JDClient') as client, patch('sys.stderr', new_callable=io.StringIO):
+                        with self.assertRaises(SystemExit) as caught:
+                            cli.main([command] + tail)
+                        self.assertEqual(caught.exception.code, 2)
+                        settings.assert_not_called()
+                        client.assert_not_called()
+
+    def test_cli_errors_preserve_validator_message_and_selection_usage(self):
+        for tail in (['0'], [str(2**63)], ['--package', '0'], ['--package', '-1'], ['1', '--package', '-1', '2']):
+            with self.subTest(tail=tail), patch('sys.stderr', new_callable=io.StringIO) as stderr:
+                with self.assertRaises(SystemExit):
+                    arguments.parse_args(['enable'] + tail)
+                text = stderr.getvalue()
+                self.assertIn('usage: jd enable', text)
+                self.assertIn('download IDs must be', text)
+                self.assertNotIn('invalid _download_id value', text)
+        with patch('sys.stderr', new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit):
+                arguments.parse_args(['enable'])
+            self.assertIn('usage: jd enable', stderr.getvalue())
+
+    def test_abbreviations_rejected_in_every_option_position(self):
+        for tail in (['--pack', '3', '1', '2'], ['1', '--pack', '3', '2'], ['1', '2', '--pack=3']):
+            with patch('sys.stderr', new_callable=io.StringIO), self.assertRaises(SystemExit) as caught:
+                arguments.parse_args(['enable'] + tail)
+            self.assertEqual(caught.exception.code, 2)
+
+    def test_missing_package_value_and_help_remain_options(self):
+        for tail in (['--package'], ['1', '--package', '--help']):
+            with patch('sys.stderr', new_callable=io.StringIO) as stderr:
+                with self.assertRaises(SystemExit) as caught:
+                    arguments.parse_args(['enable'] + tail)
+                self.assertEqual(caught.exception.code, 2)
+                self.assertIn('expected one argument', stderr.getvalue())
+        with patch('sys.stdout', new_callable=io.StringIO):
+            with self.assertRaises(SystemExit) as caught:
+                arguments.parse_args(['enable', '1', '-h'])
+            self.assertEqual(caught.exception.code, 0)
+
+    def test_actual_sdk_with_recording_transport_uses_correct_endpoints(self):
+        from myjdapi.myjdapi import Downloads
+        from types import SimpleNamespace
+        class Transport:
+            def __init__(self):
+                self.requests = []
+                self.downloads = Downloads(self)
+            def action(self, endpoint, params):
+                self.requests.append((endpoint, params))
+                return True if endpoint.endswith('/forceDownload') else None
+        for action, endpoint, params in (
+            ('enable', '/downloadsV2/setEnabled', [True, [1], [3]]),
+            ('disable', '/downloadsV2/setEnabled', [False, [1], [3]]),
+            ('resume', '/downloadsV2/resumeLinks', [[1], [3]]),
+            ('force', '/downloadsV2/forceDownload', [[1], [3]]),
+            ('remove', '/downloadsV2/removeLinks', [[1], [3]]),
+        ):
+            device = Transport()
+            selection = services.apply_download_action(device, action, [1], [3])
+            self.assertEqual(device.requests, [(endpoint, params)])
+            self.assertEqual(selection.link_ids, (1,))
+        # Older embedded callers omit package; both CLI handlers support them.
+        device = MagicMock()
+        cli.cmd_download_action(device, SimpleNamespace(command='enable', uuids=[1]),
+                                console=Console(file=io.StringIO()))
+        device.downloads.set_enabled.assert_called_once_with(True, [1], [])
+
+    def test_replacement_invalid_id_has_no_partial_mutation(self):
+        device = MagicMock()
+        with patch('sys.stderr', new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit) as caught:
+                cli._execute(services.replace_download, device, '1_2', 'https://example.org')
+        self.assertEqual(caught.exception.code, 1)
+        self.assertIn('ASCII digits', stderr.getvalue())
+        self.assertEqual(device.mock_calls, [])
+
+    def test_replacement_false_add_keeps_original_false_remove_reports_partial(self):
+        device = MagicMock()
+        device.linkgrabber.add_links.return_value = False
+        with self.assertRaisesRegex(services.ReplacementError, 'original was not removed'):
+            services.replace_download(device, 1, 'https://example.org')
+        device.downloads.remove_links.assert_not_called()
+        device.linkgrabber.add_links.assert_called_once()
+        device = MagicMock()
+        device.downloads.remove_links.return_value = False
+        with self.assertRaisesRegex(services.ReplacementError, 'Replacement was added'):
+            services.replace_download(device, 1, 'https://example.org')
+        device.linkgrabber.add_links.assert_called_once()
+        device.downloads.remove_links.assert_called_once_with([1], [])

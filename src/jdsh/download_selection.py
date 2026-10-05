@@ -9,12 +9,17 @@ SELECTED_COMMANDS = ("enable", "disable", "resume", "force", "remove", "rm")
 
 def download_id(value):
     """Accept positive IDs representable by JDownloader's signed long type."""
-    if isinstance(value, bool) or not isinstance(value, (str, int)):
+    if isinstance(value, str):
+        if not value.isascii() or not value.isdecimal():
+            raise ValueError("download IDs must be positive integers written with ASCII digits (0-9)")
+        try:
+            result = int(value, 10)
+        except ValueError as error:
+            raise ValueError("download IDs must be between 1 and 9223372036854775807") from error
+    elif isinstance(value, int) and not isinstance(value, bool):
+        result = value
+    else:
         raise ValueError("download IDs must be positive integers")
-    try:
-        result = int(value)
-    except ValueError as error:
-        raise ValueError("download IDs must be positive integers") from error
     if not 0 < result <= MAX_DOWNLOAD_ID:
         raise ValueError("download IDs must be between 1 and 9223372036854775807")
     return result

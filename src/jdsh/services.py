@@ -17,7 +17,7 @@ from .client import (
 # available_status preserves the former CLI helper: non-dict states return None.
 from .diagnostics import available_status, diagnose_link
 from .errors import ServiceError
-from .download_selection import select_downloads
+from .download_selection import download_id, select_downloads
 from .queue_view import filter_links, normalize_search, sort_rows, summarize_packages
 
 CHECK_TIMEOUT_SECONDS = 30.0
@@ -280,17 +280,22 @@ class ReplacementError(ServiceError):
 
 
 def replace_download(device, link_id, url):
-    """Preserve removal/add order and report partial success explicitly."""
+    """Validate before any mutation; add the replacement before removing original."""
+    link_id = download_id(link_id)
     try:
-        device.downloads.remove_links([link_id], [])
-    except Exception as e:
-        raise ReplacementError(f"Failed to remove original link {link_id}: {e}") from e
-    try:
-        device.linkgrabber.add_links([{
+        result = device.linkgrabber.add_links([{
             "links": url, "autostart": True, "packageName": f"Rep_{link_id}",
         }])
+        if result is False:
+            raise ServiceError("JDownloader did not accept the replacement URL")
     except Exception as e:
         raise ReplacementError(
-            f"Original link {link_id} was removed, but adding the replacement failed: {e}. "
-            "Add the replacement URL again with 'jd add'."
+            f"Failed to add replacement for link {link_id}; original was not removed: {e}"
+        ) from e
+    try:
+        remove_downloads(device, [link_id])
+    except Exception as e:
+        raise ReplacementError(
+            f"Replacement was added, but removing original link {link_id} failed: {e}. "
+            "Both entries may remain; inspect 'jd ls' and 'jd grabber' before retrying."
         ) from e
