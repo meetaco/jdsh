@@ -98,13 +98,23 @@ class KeyDecoder:
 
     def expire(self):
         if self.sequence and self.clock() - self.last_byte_at >= self.timeout:
+            keys = ['escape'] if self.sequence == '\x1b' else []
             self.reset()
+            return keys
+        return []
 
     def feed(self, text):
-        self.expire()
-        keys = []
+        keys = self.expire()
         for char in text:
+            if self.sequence == '\x1b' and char not in ('[', 'O', '\x1b'):
+                # A prompt continuation is Meta/Alt, not Esc followed by a
+                # command. Keep it atomic so modal cancellation cannot leak s/d.
+                self.reset()
+                keys.append(char if char == '\x03' else 'alt:' + char)
+                continue
             if self.sequence and (char == "\x1b" or ord(char) < 32):
+                if self.sequence == '\x1b':
+                    keys.append('escape')
                 # A new ESC/control key cannot be a CSI parameter; reprocess it.
                 self.reset()
             if not self.sequence:
@@ -117,7 +127,7 @@ class KeyDecoder:
                     self.sequence += char
                 else:
                     self.reset()
-                    keys.append(char)
+                    keys.append('alt:' + char)
             elif "@" <= char <= "~":
                 code = self.sequence[2:] + char
                 key = {"A": "up", "B": "down", "H": "home", "F": "end",

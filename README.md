@@ -65,6 +65,36 @@ and poll schedule do not guarantee real elapsed time across system suspend.
 Status requests remain synchronous: age redraws continue during a slow request,
 but keyboard handling and new status results wait for that request to finish.
 
+### TUI name search
+
+From the queue, press `/` to edit a name search. Type a substring and press Enter
+to apply it; Esc cancels editing and keeps the applied search. Backspace deletes
+a character and Ctrl+U clears the input. Apply an empty or whitespace-only input
+to clear the search and return to the full view. Search uses the same Unicode
+case-insensitive substring matching as `jd ls --search`, over both existing
+running and enabled-unfinished panes. It does not include disabled/finished links.
+
+The footer shows the applied `/query`, and panel titles show matched/total rows.
+Header transfer totals remain global. The active selection follows its ID if it
+still matches; otherwise normal nearest-row selection applies, with no selection
+for no matches. New status snapshots are filtered with the applied query, using
+no additional API calls. Details use the filtered selection and remain pinned.
+
+While editing, command letters and navigation keys do not execute queue or
+controller actions. Ctrl+C still quits; Ctrl+U and backspace are available. Search
+input is limited to 256 printable characters. POSIX UTF-8 input is buffered across
+partial reads; a standalone Esc is recognized after the existing 150ms escape
+sequence timeout. A prompt ESC+character is an ignored Alt/Meta event and does
+not cancel editing or execute commands. Invalid UTF-8 bytes are discarded.
+Windows getwch surrogate pairs are combined, but that API cannot distinguish the
+literal character `à` from its extended-key prefix. Full Unicode input is therefore
+supported on POSIX; Windows input retains this documented limitation and has only
+simulated tests, not real-console validation. Multi-line pastes use their first
+newline as Enter; bracketed paste mode and grapheme-cluster deletion are not
+supported. Backspace deletes one Unicode code point. Search editing remains available during polling errors; pane
+navigation and controller actions still require recovered status polling. Close
+details with `q` before starting a search.
+
 ### TUI link details and diagnosis
 
 Select a row and press `d` to open details for that link using the same diagnostic

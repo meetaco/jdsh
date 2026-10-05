@@ -1,6 +1,7 @@
 import time
 import sys
 import os
+import codecs
 from collections import deque
 
 msvcrt = None
@@ -28,6 +29,7 @@ from rich import box
 from . import tui_runtime, utils
 from .tui_navigation import Navigation, KeyDecoder, WINDOWS_KEYS
 from .tui_details import Details
+from .tui_search import Search
 from .errors import ServiceError
 
 MIN_TERMINAL_ROWS = 18
@@ -48,16 +50,30 @@ class KeyboardInput:
         self.decoder = KeyDecoder()
         self.pending = deque()
         self.windows_prefix = False
+        self.utf8 = codecs.getincrementaldecoder('utf-8')(errors='ignore')
+        self.windows_surrogate = None
 
     def __enter__(self):
+        self.pending.clear()
+        self.decoder.reset()
+        self.utf8.reset()
+        self.windows_prefix = False
+        self.windows_surrogate = None
         if termios:
             self.old_settings = termios.tcgetattr(sys.stdin)
             tty.setcbreak(sys.stdin.fileno())
         return self
 
     def __exit__(self, type, value, traceback):
-        if termios:
-            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
+        try:
+            if termios:
+                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
+        finally:
+            self.utf8.reset()
+            self.decoder.reset()
+            self.pending.clear()
+            self.windows_prefix = False
+            self.windows_surrogate = None
 
     def _next_key(self):
         key = self.pending.popleft()
@@ -68,7 +84,9 @@ class KeyboardInput:
     def get_key(self):
         if self.pending:
             return self._next_key()
-        self.decoder.expire()
+        self.pending.extend(self.decoder.expire())
+        if self.pending:
+            return self._next_key()
         if termios:
             try:
                 readable = select.select([sys.stdin], [], [], 0)[0]
@@ -80,9 +98,17 @@ class KeyboardInput:
             if chunk is not None:
                 # Read bytes directly: TextIO buffering can hide the rest of an
                 # escape sequence from select(). Navigation keys are ASCII.
-                self.pending.extend(self.decoder.feed(chunk.decode("utf-8", errors="ignore")))
+                self.pending.extend(self.decoder.feed(self.utf8.decode(chunk)))
         elif msvcrt is not None and msvcrt.kbhit():
             key = msvcrt.getwch()
+            if self.windows_surrogate is not None:
+                high = self.windows_surrogate
+                self.windows_surrogate = None
+                if 0xDC00 <= ord(key) <= 0xDFFF:
+                    key = chr(0x10000 + ((ord(high) - 0xD800) << 10) + ord(key) - 0xDC00)
+            if not self.windows_prefix and 0xD800 <= ord(key) <= 0xDBFF:
+                self.windows_surrogate = key
+                return None
             if self.windows_prefix:
                 self.windows_prefix = False
                 decoded = WINDOWS_KEYS.get(key)
@@ -94,7 +120,7 @@ class KeyboardInput:
             elif key in ("\x00", "\xe0"):
                 self.windows_prefix = True
             else:
-                self.pending.append(key)
+                self.pending.extend(self.decoder.feed(key))
         return self._next_key() if self.pending else None
 
 
@@ -125,9 +151,13 @@ class RefreshHeader:
 
 def generate_layout(state, running_links, enabled_unfinished_links, override_status=None,
                     *, navigation=None, height=25, width=100, refresh_status=None,
-                    refresh_snapshot=None, refresh_clock=None, details=None):
+                    refresh_snapshot=None, refresh_clock=None, details=None, search=None):
     if height < MIN_TERMINAL_ROWS:
         return Panel(Text("Terminal too short: use at least 18 rows. Ctrl+C quits."), border_style="red")
+    full_running, full_unfinished = running_links, enabled_unfinished_links
+    if search is not None:
+        running_links = search.filter(running_links)
+        enabled_unfinished_links = search.filter(enabled_unfinished_links)
     # Render transient poll failures with empty panes without changing the saved selection.
     navigation = Navigation() if navigation is None or state == "ERROR" else navigation
     navigation.sync(running_links, enabled_unfinished_links)
@@ -135,7 +165,7 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
     running_height = max(6, min(body_height - HEADER_FOOTER_ROWS, body_height * 2 // 3))
     pane_heights = (running_height, max(6, body_height - running_height))
     navigation.resize([max(1, value - PANEL_CHROME_ROWS) for value in pane_heights])
-    summary = summarize_transfers(running_links)
+    summary = summarize_transfers(full_running)
 
     # Header
     grid = Table.grid(expand=True)
@@ -166,9 +196,9 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
     grid.add_row(
         Text.assemble(
             "Running: ",
-            (str(len(running_links)), "bold white"),
+            (str(len(full_running)), "bold white"),
             "  |  Enabled unfinished: ",
-            (str(len(enabled_unfinished_links)), "dim white"),
+            (str(len(full_unfinished)), "dim white"),
         ),
         f"[dim]Running done: [/dim] {utils.human_size(summary.loaded)}",
         f"[dim]Running left: [/dim] [yellow]{utils.human_size(summary.remaining)}[/]"
@@ -226,7 +256,8 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
                 style="bold reverse" if navigation.pane == 0 and index == navigation.indices[0] else None)
 
 
-    panel_running = Panel(t_running, title="Running Links", border_style="cyan" if navigation.pane == 0 else "white", box=box.ROUNDED)
+    running_title = "Running Links" if search is None or search.query is None else f"Running Links ({len(running_links)}/{len(full_running)} matches)"
+    panel_running = Panel(t_running, title=running_title, border_style="cyan" if navigation.pane == 0 else "white", box=box.ROUNDED)
 
     # Enabled unfinished links
     t_enabled = Table(expand=True, box=box.SIMPLE, show_edge=False, pad_edge=False)
@@ -248,7 +279,8 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
                 style="bold reverse" if navigation.pane == 1 and index == navigation.indices[1] else None,
             )
 
-    panel_enabled = Panel(t_enabled, title="Enabled Unfinished Links", border_style="cyan" if navigation.pane == 1 else "dim white", box=box.ROUNDED)
+    waiting_title = "Enabled Unfinished Links" if search is None or search.query is None else f"Enabled Unfinished Links ({len(enabled_unfinished_links)}/{len(full_unfinished)} matches)"
+    panel_enabled = Panel(t_enabled, title=waiting_title, border_style="cyan" if navigation.pane == 1 else "dim white", box=box.ROUNDED)
 
     # Footer
     pane = navigation.pane
@@ -256,10 +288,13 @@ def generate_layout(state, running_links, enabled_unfinished_links, override_sta
     first = navigation.offsets[pane] + 1 if count else 0
     last = min(count, navigation.offsets[pane] + navigation.capacity[pane])
     label = "Running" if pane == 0 else "Enabled unfinished"
-    footer = Align.center(Text(
-        f"{label}: {first}-{last}/{count} | Selected ID: {navigation.selected_id if navigation.selected_id is not None else '-'}\n"
-        "j/k Move | Tab Pane | PgUp/Dn | Home/End | d Details | s Start/Stop | ^C Quit"
-    ))
+    query_label = '' if search is None or search.query is None else ' | /' + search.query
+    footer_text = Text(
+        f"{label}: {first}-{last}/{count} | Selected ID: {navigation.selected_id if navigation.selected_id is not None else '-'}{query_label}\n"
+        "j/k | Tab Pane | PgUp/Dn | Home/End | / Search | d Details | s Start/Stop | ^C",
+        no_wrap=True, overflow='ellipsis',
+    )
+    footer = Align.center(search.prompt(width) if search is not None and search.editing else footer_text)
     layout = Layout()
     layout.split(
         Layout(header, size=4),
@@ -288,6 +323,7 @@ def run(client, *, console=None, keyboard=None, clock=None, sleep=None):
         keyboard = KeyboardInput() if keyboard is None else keyboard
         navigation = Navigation()
         details = Details(console)
+        search = Search()
         last_size = [None]
         with keyboard as kbd, Live(console=console, refresh_per_second=4, screen=True) as live:
             def render(snapshot, override_status, *, refresh=False):
@@ -298,7 +334,7 @@ def run(client, *, console=None, keyboard=None, clock=None, sleep=None):
                     override_status=override_status, navigation=navigation,
                     height=size.height, width=size.width,
                     refresh_snapshot=snapshot, refresh_clock=clock,
-                    details=details,
+                    details=details, search=search,
                 ), refresh=refresh)
 
             def on_idle_refresh(snapshot, override_status):
@@ -306,6 +342,11 @@ def run(client, *, console=None, keyboard=None, clock=None, sleep=None):
                     render(snapshot, override_status)
 
             def handle_view_key(key, snapshot):
+                if search.handle_key(key):
+                    return True
+                if key == '/' and not details.is_open:
+                    search.begin()
+                    return True
                 if details.is_open and key == "q":
                     details.close()
                     return True
@@ -327,7 +368,7 @@ def run(client, *, console=None, keyboard=None, clock=None, sleep=None):
             def handle_navigation(key):
                 # Detail mode never forwards keys to the hidden queue, including
                 # future navigation shortcuts. Unhandled keys retain normal sleep.
-                return not details.is_open and navigation.handle_key(key)
+                return not details.is_open and not search.editing and navigation.handle_key(key)
 
             run_loop(client, get_key=kbd.get_key, render=render, clock=clock, sleep=sleep,
                      handle_key=handle_navigation, on_idle=on_idle_refresh, handle_view_key=handle_view_key)
