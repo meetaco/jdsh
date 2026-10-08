@@ -19,7 +19,8 @@ COMPACT_LINK_STATE_QUERY = {
 }
 
 # The ordinary list view needs enough state to answer the common operational
-# question "why is this link not downloading?" without paying for URL/date fields.
+# question "why is this link not downloading?", without paying for optional
+# completion-time or URL/added-date fields.
 LIST_LINK_STATE_QUERY = {
     **COMPACT_LINK_STATE_QUERY,
     "advancedStatus": True,
@@ -36,8 +37,8 @@ DOWNLOAD_LINK_STATE_QUERY = {
     "eta": True,
     "url": True,
     "addedDate": True,
-    "comment": True,
     "finishedDate": True,
+    "comment": True,
 }
 
 # Keep availability refreshes narrow: jd check only needs the fields required
