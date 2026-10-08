@@ -19,14 +19,15 @@ COMPACT_LINK_STATE_QUERY = {
 }
 
 # The ordinary list view needs enough state to answer the common operational
-# question "why is this link not downloading?", without paying for optional
-# completion-time or URL/added-date fields.
+# question "why is this link not downloading?" and display completion time,
+# without paying for URL/added-date fields.
 LIST_LINK_STATE_QUERY = {
     **COMPACT_LINK_STATE_QUERY,
     "advancedStatus": True,
     "extractionStatus": True,
     "host": True,
     "priority": True,
+    "finishedDate": True,
 }
 
 # Keep diagnostic output broad, but deliberately omit the upstream `password`
@@ -37,7 +38,6 @@ DOWNLOAD_LINK_STATE_QUERY = {
     "eta": True,
     "url": True,
     "addedDate": True,
-    "finishedDate": True,
     "comment": True,
 }
 

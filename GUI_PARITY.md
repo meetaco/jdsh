@@ -61,6 +61,7 @@ Legend:
 - [x] Surface state, availability and reason in the default list.
 - [x] Add `jd why <id>`.
 - [x] Add package-oriented queue view and filters/sorting (`jd ls --packages`, `--search`, `--state`, `--host`, `--sort`, including `finished` for completion-time order).
+- [x] Display JD2 completion timestamps in link/package list columns with local time and UTC offset.
 - [x] Improve TUI state/diagnosis visibility with on-demand selected-link details.
 
 ### Phase 2 — download actions

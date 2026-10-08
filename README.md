@@ -375,7 +375,7 @@ jd ls --search archive
 jd ls --state waiting --host example.com
 jd ls --state running --state waiting --sort name
 jd ls --sort size --reverse
-jd ls --state FINISHED --sort finished --reverse
+jd ls --state finished --sort finished --reverse
 jd ls -d --search archive
 jd ls --packages
 jd ls --packages --search archive --state waiting --sort progress --reverse
@@ -399,16 +399,22 @@ unless `--reverse` is supplied;
 and equal values retain their original order. Unknown or zero total sizes give
 an unknown completion percentage. Missing, zero, negative, nonnumeric, and
 nonfinite completion times are unknown. With no sorting option, the API order is kept.
-Use `jd ls --state FINISHED --sort finished --reverse` for newest completions first.
-Completion timestamps are requested only for `--sort finished` or detailed output;
-the ordinary table does not display the timestamp.
+Use `jd ls --state finished --sort finished --reverse` for newest completions first.
+The `Finished at` column displays JD2's completion time in the terminal's local
+time zone as `YYYY-MM-DD HH:MM:SS+HH:MM` (for example,
+`2026-10-08 12:34:56+09:00`); the suffix is the UTC offset at that time.
+Missing, invalid, or out-of-range dates display `-`. The timestamp is requested
+for every list view because it is now displayed even without sorting.
+Detailed and JSON output retain the raw `finishedDate` epoch-millisecond value.
+No separate history is stored: resetting or removing a link in JD2 does not
+preserve its previous completion time in jdsh.
 
 `--packages` displays package IDs and names, matched/total link counts, matched
-bytes downloaded/total bytes, diagnostic state counts, and hosts. Filters apply
-before aggregation: the sizes, states, hosts, and sorting keys describe only the
+bytes downloaded/total bytes, diagnostic state counts, hosts, and `Finished at`.
+Filters apply before aggregation: the sizes, states, hosts, and sorting keys describe only the
 matched links, while the total link count comes from the full link snapshot.
-For `--sort finished`, a package uses the latest completion time among its
-matched links, even if other links are unfinished. In JSON output, `finishedDate`
+The `Finished at` column and `--sort finished` use the latest completion time
+among a package's matched links, even if other links are unfinished. In JSON output, `finishedDate`
 is omitted from a package summary when no matched link has a known completion time.
 A package with any unknown member size has an unknown aggregate size (`null`).
 Hosts are deduplicated and ordered ignoring case; the first API spelling is
