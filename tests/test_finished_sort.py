@@ -66,7 +66,7 @@ class FinishedSortTests(unittest.TestCase):
             dict(LIST_LINK_STATE_QUERY, finishedDate=True, startAt=0, maxResults=-1),
         ])
 
-    def test_completion_query_is_requested_only_when_needed(self):
+    def test_completion_query_is_requested_for_every_list_view(self):
         for packages in (False, True):
             for sort in (None, "name", "finished"):
                 with self.subTest(packages=packages, sort=sort):
@@ -76,11 +76,8 @@ class FinishedSortTests(unittest.TestCase):
                                  else services.list_downloads)
                     operation(device, sort=sort)
                     query = device.downloads.query_links.call_args.args[0][0]
-                    if sort == "finished":
-                        self.assertIs(query["finishedDate"], True)
-                    else:
-                        self.assertNotIn("finishedDate", query)
-        self.assertNotIn("finishedDate", LIST_LINK_STATE_QUERY)
+                    self.assertIs(query["finishedDate"], True)
+        self.assertIs(LIST_LINK_STATE_QUERY["finishedDate"], True)
 
     def test_diagnostic_query_preserves_completion_time(self):
         device = MagicMock()

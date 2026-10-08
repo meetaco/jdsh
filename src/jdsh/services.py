@@ -41,8 +41,6 @@ def list_downloads(device, *, detail: bool = False, search=None, states=(),
     search = normalize_search(search)
     query = DOWNLOAD_LINK_STATE_QUERY if detail else LIST_LINK_STATE_QUERY
     query = query.copy()
-    if sort == "finished":
-        query["finishedDate"] = True
     if search is not None or states or hosts or sort is not None:
         query.update(startAt=0, maxResults=-1)
     links = device.downloads.query_links([query])
@@ -53,8 +51,6 @@ def list_downloads(device, *, detail: bool = False, search=None, states=(),
 def list_download_packages(device, *, search=None, states=(), hosts=(),
                            sort=None, reverse=False) -> List[Dict[str, Any]]:
     query = dict(LIST_LINK_STATE_QUERY, startAt=0, maxResults=-1)
-    if sort == "finished":
-        query["finishedDate"] = True
     links = device.downloads.query_links([query])
     if not links:
         return []

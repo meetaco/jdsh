@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 from .stats import Number, known_nonnegative
@@ -35,3 +36,15 @@ def human_percent(percent: Optional[float], precision: int = 0) -> str:
     if percent < 100:
         percent = min(percent, 100 - 10 ** -precision)
     return f"{percent:.{precision}f}%"
+
+
+def human_timestamp(timestamp: Optional[Number]) -> str:
+    """Format JD's epoch milliseconds in local time, including its UTC offset."""
+    timestamp = known_nonnegative(timestamp)
+    if timestamp is None or timestamp == 0:
+        return "-"
+    try:
+        date = datetime.fromtimestamp(timestamp / 1000).astimezone()
+    except (OverflowError, OSError, ValueError):
+        return "-"
+    return date.isoformat(sep=" ", timespec="seconds")

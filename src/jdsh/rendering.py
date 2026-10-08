@@ -286,6 +286,7 @@ def render_list(links, detail=False, *, filtered=False, console=None):
         table.add_column("Availability")
         table.add_column("Done/Total", justify="right")
         table.add_column("Host")
+        table.add_column("Finished at", no_wrap=True)
         table.add_column("Reason")
         table.add_column("Name")
 
@@ -299,6 +300,7 @@ def render_list(links, detail=False, *, filtered=False, console=None):
                 availability_label(link),
                 size_fmt,
                 _raw_value(link.get("host")),
+                utils.human_timestamp(link.get("finishedDate")),
                 str(diagnosis["reason"]),
                 Text(str(link['name'])),
             )
@@ -311,8 +313,9 @@ def render_packages(packages, *, filtered=False, console=None):
         render_message("No downloads match the filters." if filtered else "Download queue is empty.", console=console)
         return
     table = Table(title="Packages (sizes and states describe matched links)", box=box.SIMPLE_HEAD)
-    for name in ("Package ID", "Name", "Links matched/total", "Done/Total", "States", "Hosts"):
-        table.add_column(name, no_wrap=name == "Package ID")
+    for name in ("Package ID", "Name", "Links matched/total", "Done/Total",
+                 "States", "Hosts", "Finished at"):
+        table.add_column(name, no_wrap=name in ("Package ID", "Finished at"))
     for package in packages:
         states = ", ".join(f"{state}: {count}" for state, count in sorted(package["states"].items()))
         table.add_row(
@@ -321,6 +324,7 @@ def render_packages(packages, *, filtered=False, console=None):
             f"{package['matchedCount']}/{package['linkCount']}",
             f"{_raw_size(package['bytesLoaded'])}/{_raw_size(package['bytesTotal'])}",
             states, Text(", ".join(package["hosts"]) or "UNKNOWN"),
+            utils.human_timestamp(package.get("finishedDate")),
         )
     console.print(table)
 
