@@ -49,6 +49,8 @@ def sort_rows(rows, *, sort=None, reverse=False, packages=False):
             return known_nonnegative(row.get("bytesTotal"))
         if sort == "progress":
             return transfer_progress(row).percent
+        if sort == "finished":
+            return known_nonnegative(row.get("finishedDate"))
         if sort == "id":
             return known_nonnegative(row.get("uuid"))
         if sort == "host" and packages:
@@ -81,6 +83,10 @@ def summarize_packages(all_links, matched_links, package_names):
     result = []
     for package_id, links in groups.items():
         summary = summarize_transfers(links)
+        finished_dates = [
+            value for value in (known_nonnegative(link.get("finishedDate")) for link in links)
+            if value is not None
+        ]
         # Keep the first spelling from the API while deduplicating and ordering
         # hosts with the same case-insensitive semantics as filtering/sorting.
         hosts = {}
@@ -95,6 +101,7 @@ def summarize_packages(all_links, matched_links, package_names):
             "linkCount": counts[package_id],
             "bytesLoaded": summary.loaded,
             "bytesTotal": summary.total,
+            "finishedDate": max(finished_dates) if finished_dates else None,
             "states": dict(Counter(diagnose_link(link)["state"] for link in links)),
             "hosts": [hosts[key] for key in sorted(hosts)],
         })
