@@ -19,13 +19,15 @@ COMPACT_LINK_STATE_QUERY = {
 }
 
 # The ordinary list view needs enough state to answer the common operational
-# question "why is this link not downloading?" without paying for URL/date fields.
+# question "why is this link not downloading?" plus completion time for optional
+# finished-date sorting, without paying for URL/added-date fields.
 LIST_LINK_STATE_QUERY = {
     **COMPACT_LINK_STATE_QUERY,
     "advancedStatus": True,
     "extractionStatus": True,
     "host": True,
     "priority": True,
+    "finishedDate": True,
 }
 
 # Keep diagnostic output broad, but deliberately omit the upstream `password`
@@ -37,7 +39,6 @@ DOWNLOAD_LINK_STATE_QUERY = {
     "url": True,
     "addedDate": True,
     "comment": True,
-    "finishedDate": True,
 }
 
 # Keep availability refreshes narrow: jd check only needs the fields required
