@@ -94,15 +94,17 @@ def summarize_packages(all_links, matched_links, package_names):
             host = _text(link.get("host"))
             if host.strip():
                 hosts.setdefault(host.casefold(), host)
-        result.append({
+        package = {
             "uuid": package_id,
             "name": package_names.get(package_id),
             "matchedCount": len(links),
             "linkCount": counts[package_id],
             "bytesLoaded": summary.loaded,
             "bytesTotal": summary.total,
-            "finishedDate": max(finished_dates) if finished_dates else None,
             "states": dict(Counter(diagnose_link(link)["state"] for link in links)),
             "hosts": [hosts[key] for key in sorted(hosts)],
-        })
+        }
+        if finished_dates:
+            package["finishedDate"] = max(finished_dates)
+        result.append(package)
     return result
