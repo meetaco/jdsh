@@ -375,6 +375,7 @@ jd ls --search archive
 jd ls --state waiting --host example.com
 jd ls --state running --state waiting --sort name
 jd ls --sort size --reverse
+jd ls --state FINISHED --sort finished --reverse
 jd ls -d --search archive
 jd ls --packages
 jd ls --packages --search archive --state waiting --sort progress --reverse
@@ -391,16 +392,24 @@ State names are the same diagnostic states shown by `jd ls` and `jd why`:
 `OFFLINE`, `STATUS`, and `UNKNOWN`; lowercase input is accepted. `WAITING` can
 include enabled idle links whose precise reason is unknown.
 
-`--sort` accepts `name`, `id`, `host`, `size` (total bytes), or `progress`
-(completed percentage). Sorting is ascending unless `--reverse` is supplied;
+`--sort` accepts `name`, `id`, `host`, `size` (total bytes), `progress`
+(completed percentage), or `finished` (completion time). Sorting is ascending
+unless `--reverse` is supplied;
 `--reverse` requires `--sort`. Unknown values remain last in either direction,
 and equal values retain their original order. Unknown or zero total sizes give
-an unknown completion percentage. With no sorting option, the API order is kept.
+an unknown completion percentage. Missing, zero, negative, nonnumeric, and
+nonfinite completion times are unknown. With no sorting option, the API order is kept.
+Use `jd ls --state FINISHED --sort finished --reverse` for newest completions first.
+Completion timestamps are requested only for `--sort finished` or detailed output;
+the ordinary table does not display the timestamp.
 
 `--packages` displays package IDs and names, matched/total link counts, matched
 bytes downloaded/total bytes, diagnostic state counts, and hosts. Filters apply
 before aggregation: the sizes, states, hosts, and sorting keys describe only the
 matched links, while the total link count comes from the full link snapshot.
+For `--sort finished`, a package uses the latest completion time among its
+matched links, even if other links are unfinished. In JSON output, `finishedDate`
+is omitted from a package summary when no matched link has a known completion time.
 A package with any unknown member size has an unknown aggregate size (`null`).
 Hosts are deduplicated and ordered ignoring case; the first API spelling is
 kept. Packages with no matching links are omitted, as are empty packages. Links with

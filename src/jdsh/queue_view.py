@@ -39,6 +39,12 @@ def filter_links(links, *, search=None, states=(), hosts=(), package_names=None)
     return result
 
 
+def _finished_date(row):
+    """Zero and invalid completion timestamps have no usable completion time."""
+    value = known_nonnegative(row.get("finishedDate"))
+    return value if value is not None and value > 0 else None
+
+
 def sort_rows(rows, *, sort=None, reverse=False, packages=False):
     """Unknown keys stay last in either direction; ties preserve API order."""
     if sort is None:
@@ -50,7 +56,7 @@ def sort_rows(rows, *, sort=None, reverse=False, packages=False):
         if sort == "progress":
             return transfer_progress(row).percent
         if sort == "finished":
-            return known_nonnegative(row.get("finishedDate"))
+            return _finished_date(row)
         if sort == "id":
             return known_nonnegative(row.get("uuid"))
         if sort == "host" and packages:
@@ -83,10 +89,8 @@ def summarize_packages(all_links, matched_links, package_names):
     result = []
     for package_id, links in groups.items():
         summary = summarize_transfers(links)
-        finished_dates = [
-            value for value in (known_nonnegative(link.get("finishedDate")) for link in links)
-            if value is not None
-        ]
+        dates = (_finished_date(link) for link in links)
+        finished_dates = [value for value in dates if value is not None]
         # Keep the first spelling from the API while deduplicating and ordering
         # hosts with the same case-insensitive semantics as filtering/sorting.
         hosts = {}
