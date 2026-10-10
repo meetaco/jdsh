@@ -1,0 +1,28 @@
+{
+  "repository": "meetaco/jdsh",
+  "target": "/home/meetaco/dev/jdsh",
+  "source_ref": "25478ab971a8aa7ac25d79586d59c0fa95a573d9",
+  "source_branch": "feature/finished-date-column",
+  "worktree_dirty": true,
+  "excluded_uncommitted_paths": [
+    "README.md",
+    "src/jdsh/cli.py",
+    "tests/test_cli.py"
+  ],
+  "profile": "quick",
+  "scope": "Full repository source review at committed HEAD; target-controlled execution omitted.",
+  "run_status": "incomplete",
+  "incomplete_reason": "sandbox_controls_unavailable",
+  "execution_constraints": "No target builds, tests, or processes were run because the required OS-enforced no-network, allowlisted-environment, read-only-target, scratch-only-write, and resource-limit sandbox was unavailable.",
+  "prior_run_inputs": "No prior run artifacts found under ~/security-audit-skill/jdsh/.",
+  "agents": [
+    "recon_entrypoints",
+    "recon_authority",
+    "recon_build_ci",
+    "verify_local_api_candidate",
+    "coverage_critic"
+  ],
+  "confirmed_count": 0,
+  "needs_validation_count": 1,
+  "rejected_count": 0
+}

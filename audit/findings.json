@@ -1,0 +1,63 @@
+[
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "jdsh:local-api:remote-exposure",
+    "title": "Remote JDownloader Local API exposure may permit unauthorized queue control",
+    "description": "JDSH documents enabling the deprecated Local API and notes that localhost-only mode may need to be disabled for remote use. JDSH connects to the configured host and exposes operations that add, move, remove, replace, and start downloads. Source does not establish whether the upstream API authenticates remote callers or whether the endpoint is reachable by an untrusted principal, so an unauthorized boundary crossing is not established.",
+    "claimed_root_cause": "Potential remote API exposure without an independently enforced authentication or network boundary.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "README.md",
+        "line": 24,
+        "scope": "JDownloader Local API setup",
+        "description": "Documentation mentions disabling localhost-only mode for remote access."
+      },
+      {
+        "kind": "propagation",
+        "file": "src/jdsh/config.py",
+        "line": 18,
+        "scope": "Configured API endpoint",
+        "description": "JDSH reads the API host and port from user config, defaulting to loopback."
+      },
+      {
+        "kind": "propagation",
+        "file": "src/jdsh/client.py",
+        "line": 119,
+        "scope": "API connection",
+        "description": "The client connects directly to the configured host and port."
+      },
+      {
+        "kind": "sink",
+        "file": "src/jdsh/cli.py",
+        "line": 626,
+        "scope": "Queue control",
+        "description": "The CLI replaces a link and adds the replacement with autostart."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "README.md",
+        "line": 24,
+        "description": "Remote use may require setting deprecatedapilocalhostonly to false."
+      },
+      {
+        "file": "src/jdsh/client.py",
+        "line": 117,
+        "description": "Connection uses configurable host and port; this repository does not implement an authentication check."
+      },
+      {
+        "file": "src/jdsh/cli.py",
+        "line": 614,
+        "description": "Queue and download-controller actions can change local state."
+      }
+    ],
+    "blockers": [
+      "The repository does not establish whether deployed JDownloader Local API requires authentication, binds to an externally reachable interface, or is reachable through host firewall/routing."
+    ],
+    "validation_plan": {
+      "deployment": "On an isolated staging instance matching deployed version/settings, verify API authentication, bind/listen addresses, and firewall exposure. If authorized, use a separate test host and dummy queue to test a read request and one harmless reversible action; do not probe production.",
+      "local": "Inspect the exact deployed JDownloader version and myjdapi protocol/authentication behavior from trusted local package sources; do not infer it from JDSH code."
+    }
+  }
+]
