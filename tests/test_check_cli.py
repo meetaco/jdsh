@@ -59,6 +59,7 @@ class CheckCommandTests(unittest.TestCase):
         device.action.assert_called_once_with(
             "/downloadsV2/startOnlineStatusCheck", [[123], []]
         )
+        device.downloads.force_download.assert_not_called()
         rendered = output.getvalue()
         self.assertIn("file.zip", rendered)
         self.assertIn("FALSE (Offline)", rendered)
@@ -80,6 +81,58 @@ class CheckCommandTests(unittest.TestCase):
 
         payload = json.loads(stdout.getvalue())
         self.assertEqual(payload["availableStatus"]["id"], "TRUE")
+        device.downloads.force_download.assert_not_called()
+
+    def test_force_flag_only_forces_unfinished_online_link(self):
+        device = MagicMock()
+        device.downloads.query_links.return_value = [dict(self.link("TRUE"), finished=False, running=False)]
+
+        with patch.object(services.time, "monotonic", side_effect=[0.0, 1.1]), \
+             patch.object(services.time, "sleep"), \
+             patch("sys.stdout", new_callable=io.StringIO):
+            cli._execute(cli.cmd_check, device, SimpleNamespace(id=123, force=True, as_json=True))
+
+        device.downloads.force_download.assert_called_once_with([123], [])
+
+    def test_force_flag_skips_offline_and_unknown_finished_state(self):
+        for link in (dict(self.link("FALSE"), finished=False, running=False),
+                     self.link("TRUE"),
+                     dict(self.link("TRUE"), finished=False, running=True)):
+            with self.subTest(link=link):
+                device = MagicMock()
+                device.downloads.query_links.return_value = [link]
+                with patch.object(services.time, "monotonic", side_effect=[0.0, 1.1]), \
+                     patch.object(services.time, "sleep"), \
+                     patch("sys.stdout", new_callable=io.StringIO):
+                    cli._execute(cli.cmd_check, device, SimpleNamespace(id=123, force=True, as_json=True))
+                device.downloads.force_download.assert_not_called()
+
+    def test_force_flag_skips_completed_link(self):
+        device = MagicMock()
+        device.downloads.query_links.return_value = [dict(self.link("TRUE"), finished=True, running=False)]
+        with patch.object(services.time, "monotonic", side_effect=[0.0, 1.1]), \
+             patch.object(services.time, "sleep"), \
+             patch("sys.stdout", new_callable=io.StringIO):
+            cli._execute(cli.cmd_check, device, SimpleNamespace(id=123, force=True, as_json=True))
+        device.downloads.force_download.assert_not_called()
+
+    def test_force_failure_still_renders_refreshed_availability(self):
+        device = MagicMock()
+        device.downloads.query_links.return_value = [dict(self.link("TRUE", "Online"), finished=False, running=False)]
+        device.downloads.force_download.side_effect = RuntimeError("endpoint unavailable")
+        output = io.StringIO()
+        console = Console(file=output, force_terminal=False, width=120)
+
+        with patch.object(rendering, "Console", return_value=console), \
+             patch.object(services.time, "monotonic", side_effect=[0.0, 1.1]), \
+             patch.object(services.time, "sleep"), \
+             patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit) as ctx:
+                cli._execute(cli.cmd_check, device, SimpleNamespace(id=123, force=True, as_json=False))
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn("TRUE (Online)", output.getvalue())
+        self.assertIn("Failed to force download", stderr.getvalue())
 
     def test_missing_link_is_reported_cleanly_without_starting_check(self):
         device = MagicMock()
@@ -146,6 +199,7 @@ class CheckCommandTests(unittest.TestCase):
             [[123, 456, 789], []],
         )
         sleep.assert_not_called()
+        device.downloads.force_download.assert_not_called()
         self.assertIn("Started online status check for 3 links", stdout.getvalue())
         self.assertIn("background", stdout.getvalue())
 

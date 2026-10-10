@@ -92,7 +92,7 @@ def print_help(*, console=None):
     add_cmd("list (ls)", "[-d] [--packages] [filters/sort]", "List downloads; use jd ls --help for search, filters, and sorting")
     add_cmd("show", "<id> [--json]", "Show raw link, package, URL, and diagnosis details")
     add_cmd("why", "<id> [--json]", "Explain why a download is not progressing")
-    add_cmd("check", "<id> | --all [--json]", "Force-refresh link availability")
+    add_cmd("check", "<id> [--force] | --all [--json]", "Refresh availability; --force resumes and forces an eligible link")
     add_cmd("grabber", "[-d] [--json] [filters]", "Inspect LinkGrabber; use jd grabber --help for name, host, package, and job filters")
     add_cmd("add", "[<url>...] [--clipboard] [-f <path>]", "Add links to LinkGrabber (file: one URL per line)")
     add_cmd("confirm", "[<id>...] [--package <id>] | --all", "Move selected Grabber links/packages; no IDs means all pending packages")
@@ -123,7 +123,7 @@ def print_help(*, console=None):
         "[bold cyan]jd why[/] [green]123456789[/]\n"
         "[bold cyan]jd show[/] [green]123456789[/]\n\n"
         "[dim]# force-refresh availability:[/]\n"
-        "[bold cyan]jd check[/] [green]123456789[/]\n"
+        "[bold cyan]jd check[/] [green]123456789[/] [green]--force[/]\n"
         "[bold cyan]jd check --all[/]"
     )
 

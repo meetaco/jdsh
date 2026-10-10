@@ -39,7 +39,15 @@ def cmd_check(device, args, *, console=None):
             rendering.render_check_all(payload, console=console)
         return
 
-    payload = services.check_download(device, args.id)
+    try:
+        payload = services.check_download(device, args.id, force=getattr(args, "force", False))
+    except services.CheckActionError as error:
+        payload = error.result
+        if args.as_json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            rendering.render_check(payload, console=console)
+        raise
 
     if args.as_json:
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))

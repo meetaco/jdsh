@@ -80,6 +80,11 @@ class CheckArgsTests(unittest.TestCase):
         self.assertFalse(args.all_links)
         self.assertTrue(args.as_json)
 
+    def test_parser_accepts_check_force(self):
+        args = arguments.parse_args(["check", "123", "--force"])
+        self.assertEqual(args.id, 123)
+        self.assertTrue(args.force)
+
     def test_parser_accepts_check_all_and_json(self):
         args = arguments.parse_args(["check", "--all", "--json"])
         self.assertEqual(args.command, "check")
@@ -95,6 +100,11 @@ class CheckArgsTests(unittest.TestCase):
     def test_parser_rejects_id_with_all(self):
         with patch("sys.stderr", new_callable=io.StringIO), self.assertRaises(SystemExit) as ctx:
             arguments.parse_args(["check", "123", "--all"])
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_parser_rejects_force_with_all(self):
+        with patch("sys.stderr", new_callable=io.StringIO), self.assertRaises(SystemExit) as ctx:
+            arguments.parse_args(["check", "--all", "--force"])
         self.assertEqual(ctx.exception.code, 2)
 
 

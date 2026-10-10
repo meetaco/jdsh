@@ -212,6 +212,14 @@ class CheckError(ServiceError):
     pass
 
 
+class CheckActionError(CheckError):
+    """A forced action failed after availability was refreshed successfully."""
+
+    def __init__(self, message, result):
+        super().__init__(message)
+        self.result = result
+
+
 class WhyError(ServiceError):
     pass
 
@@ -293,8 +301,8 @@ def _wait_for_online_check(device, link_id, initial_status, *, clock=None, sleep
         sleep(CHECK_POLL_INTERVAL_SECONDS)
 
 
-def check_download(device, link_id, *, clock=None, sleep=None):
-    """Start a re-check and await availability using injectable polling functions."""
+def check_download(device, link_id, *, force=False, clock=None, sleep=None):
+    """Refresh availability and optionally force an unfinished online link."""
     initial_link = _query_check_link(device, link_id)
     if initial_link is None:
         raise CheckError(f"Download link ID not found: {link_id}")
@@ -306,11 +314,29 @@ def check_download(device, link_id, *, clock=None, sleep=None):
         raise CheckError(f"Failed to start online status check: {e}") from e
 
     link = _wait_for_online_check(device, link_id, initial_status, clock=clock, sleep=sleep)
-    return {
+    status = available_status(link)
+    status_id = (status or {}).get("id")
+    result_payload = {
         "uuid": link.get("uuid"),
         "name": link.get("name"),
-        "availableStatus": available_status(link),
+        "availableStatus": status,
     }
+    if (force and link.get("finished") is False and link.get("running") is False
+            and status_id in ("TRUE", "TRUETEMP")):
+        try:
+            resumed = device.action("/downloadsV2/resumeLinks", [[link_id], []])
+        except Exception as e:
+            raise CheckActionError(f"Failed to resume download: {e}", result_payload) from e
+        if resumed is False:
+            raise CheckActionError("JDownloader did not accept the resume request", result_payload)
+        try:
+            result = device.downloads.force_download([link_id], [])
+        except Exception as e:
+            raise CheckActionError(f"Failed to force download: {e}", result_payload) from e
+        if result is False:
+            raise CheckActionError("JDownloader did not accept the force-download request", result_payload)
+
+    return result_payload
 
 
 def check_all_downloads(device):
