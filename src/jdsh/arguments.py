@@ -65,7 +65,7 @@ def _build_parser_with_commands():
     p_why.add_argument("id", type=int, help="Download link ID shown by jd ls")
     p_why.add_argument("--json", action="store_true", dest="as_json", help="Print diagnosis and source evidence as JSON")
 
-    p_check = command("check", 'Refresh availability; retry an unfinished link when an ID is given.')
+    p_check = command("check", 'Refresh availability; --force resumes and forces an idle, unfinished, online link.')
     p_check.add_argument("id", nargs="?", type=int, help="Download link ID shown by jd ls")
     p_check.add_argument(
         "--all",
@@ -74,6 +74,7 @@ def _build_parser_with_commands():
         help="Queue a fresh online-status check for every download link",
     )
     p_check.add_argument("--json", action="store_true", dest="as_json", help="Print check result as JSON")
+    p_check.add_argument("--force", action="store_true", help="Resume and force the link if it is online, unfinished, and idle")
 
     p_gr = command("grabber", 'Inspect pending LinkGrabber links; filters only affect this listing.', allow_abbrev=False)
     p_gr.add_argument("-d", "--detail", action="store_true", help="Show detailed link information")
@@ -240,4 +241,6 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
             parser.error("jd check requires <id> or --all")
         if args.id is not None and args.all_links:
             parser.error("jd check accepts either <id> or --all, not both")
+        if args.force and args.all_links:
+            parser.error("jd check --force requires a single link ID and cannot be combined with --all")
     return args

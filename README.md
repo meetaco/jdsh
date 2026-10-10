@@ -171,7 +171,7 @@ Windows input is covered by simulated tests, not a live Windows terminal run.
 │    list (ls)                [-d]                     List active downloads                                                                                           │
 │    show                     <id> [--json]            Show raw link, package, and URL details                                                                         │
 │    why                      <id> [--json]            Explain why a download is not progressing                                                                       │
-│    check                    <id> | --all [--json]    Refresh availability; retry unfinished link by ID                                                               │
+│    check                    <id> [--force] | --all [--json] Refresh availability; --force resumes and forces an idle online link                                         │
 │    grabber                  [-d] [--json] [filters]               Inspect pending links; see jd grabber --help                                                       │
 │    add                      [<url>...] [--clipboard] [-f <path>] Add links to LinkGrabber                                                                            │
 │    confirm                  [IDs] [--package ID] | --all          Move selected entries; no IDs means all                                                            │
@@ -217,7 +217,15 @@ Windows input is covered by simulated tests, not a live Windows terminal run.
   # inspect one download and related package/URL data:
   jd show 123456789
   jd show 123456789 --json
+  jd check 123456789 --force
 ```
+
+`jd check <id>` refreshes availability and reports the result. It does not
+start a download unless `--force` is supplied; then it asks JDownloader to
+resume and force the link only if the refreshed link is unfinished, idle, and
+online.
+`jd check --all` only queues availability checks and cannot be combined with
+`--force`.
 
 ### Acting on selected downloads
 

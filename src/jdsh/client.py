@@ -47,6 +47,7 @@ CHECK_LINK_STATE_QUERY = {
     "name": True,
     "uuid": True,
     "finished": True,
+    "running": True,
     "advancedStatus": True,
 }
 

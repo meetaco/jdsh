@@ -293,8 +293,8 @@ def _wait_for_online_check(device, link_id, initial_status, *, clock=None, sleep
         sleep(CHECK_POLL_INTERVAL_SECONDS)
 
 
-def check_download(device, link_id, *, clock=None, sleep=None):
-    """Start a re-check and await availability using injectable polling functions."""
+def check_download(device, link_id, *, force=False, clock=None, sleep=None):
+    """Refresh availability and optionally force an unfinished online link."""
     initial_link = _query_check_link(device, link_id)
     if initial_link is None:
         raise CheckError(f"Download link ID not found: {link_id}")
@@ -306,13 +306,22 @@ def check_download(device, link_id, *, clock=None, sleep=None):
         raise CheckError(f"Failed to start online status check: {e}") from e
 
     link = _wait_for_online_check(device, link_id, initial_status, clock=clock, sleep=sleep)
-    if not link.get("finished", False):
+    status = available_status(link)
+    status_id = (status or {}).get("id")
+    if (force and link.get("finished") is False and link.get("running") is False
+            and status_id in ("TRUE", "TRUETEMP")):
+        try:
+            resumed = device.action("/downloadsV2/resumeLinks", [[link_id], []])
+        except Exception as e:
+            raise CheckError(f"Failed to resume download: {e}") from e
+        if resumed is False:
+            raise ServiceError("JDownloader did not accept the resume request")
         try:
             result = device.downloads.force_download([link_id], [])
-            if result is False:
-                raise ServiceError("JDownloader did not accept the force-download request")
         except Exception as e:
             raise CheckError(f"Failed to force download: {e}") from e
+        if result is False:
+            raise ServiceError("JDownloader did not accept the force-download request")
 
     return {
         "uuid": link.get("uuid"),

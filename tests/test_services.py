@@ -3,7 +3,7 @@
 import contextlib
 import io
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 from jdsh import services
 from jdsh.client import DOWNLOAD_LINK_STATE_QUERY
@@ -55,6 +55,40 @@ class DownloadServiceTests(unittest.TestCase):
         self.assertEqual(result["availableStatus"], {"id": "TRUE"})
         self.assertEqual(pauses, [services.CHECK_POLL_INTERVAL_SECONDS])
         device.action.assert_called_once_with("/downloadsV2/startOnlineStatusCheck", [[123], []])
+        device.downloads.force_download.assert_not_called()
+
+    def test_check_force_is_opt_in_and_only_for_online_unfinished_link(self):
+        device = MagicMock()
+        device.downloads.query_links.return_value = [dict(self.link("TRUE"), finished=False, running=False)]
+        moments = iter([0.0, 1.1])
+        result = services.check_download(device, 123, force=True,
+                                         clock=lambda: next(moments), sleep=lambda _: None)
+        self.assertEqual(result["availableStatus"], {"id": "TRUE"})
+        device.downloads.force_download.assert_called_once_with([123], [])
+        self.assertEqual(device.action.call_args_list, [
+            call("/downloadsV2/startOnlineStatusCheck", [[123], []]),
+            call("/downloadsV2/resumeLinks", [[123], []]),
+        ])
+
+    def test_check_force_rejects_false_without_wrapping_service_error(self):
+        device = MagicMock()
+        device.downloads.query_links.return_value = [dict(self.link("TRUE"), finished=False, running=False)]
+        device.downloads.force_download.return_value = False
+        moments = iter([0.0, 1.1])
+        with self.assertRaisesRegex(services.ServiceError, "did not accept the force-download request"):
+            services.check_download(device, 123, force=True,
+                                    clock=lambda: next(moments), sleep=lambda _: None)
+
+    def test_check_force_wraps_api_failure(self):
+        device = MagicMock()
+        device.downloads.query_links.return_value = [dict(self.link("TRUE"), finished=False, running=False)]
+        error = RuntimeError("endpoint unavailable")
+        device.downloads.force_download.side_effect = error
+        moments = iter([0.0, 1.1])
+        with self.assertRaisesRegex(services.CheckError, "Failed to force download") as caught:
+            services.check_download(device, 123, force=True,
+                                    clock=lambda: next(moments), sleep=lambda _: None)
+        self.assertIs(caught.exception.__cause__, error)
 
     def test_check_times_out_using_injected_clock(self):
         device = MagicMock()
