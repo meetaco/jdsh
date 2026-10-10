@@ -116,6 +116,24 @@ class CheckCommandTests(unittest.TestCase):
             cli._execute(cli.cmd_check, device, SimpleNamespace(id=123, force=True, as_json=True))
         device.downloads.force_download.assert_not_called()
 
+    def test_force_failure_still_renders_refreshed_availability(self):
+        device = MagicMock()
+        device.downloads.query_links.return_value = [dict(self.link("TRUE", "Online"), finished=False, running=False)]
+        device.downloads.force_download.side_effect = RuntimeError("endpoint unavailable")
+        output = io.StringIO()
+        console = Console(file=output, force_terminal=False, width=120)
+
+        with patch.object(rendering, "Console", return_value=console), \
+             patch.object(services.time, "monotonic", side_effect=[0.0, 1.1]), \
+             patch.object(services.time, "sleep"), \
+             patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit) as ctx:
+                cli._execute(cli.cmd_check, device, SimpleNamespace(id=123, force=True, as_json=False))
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn("TRUE (Online)", output.getvalue())
+        self.assertIn("Failed to force download", stderr.getvalue())
+
     def test_missing_link_is_reported_cleanly_without_starting_check(self):
         device = MagicMock()
         device.downloads.query_links.return_value = []

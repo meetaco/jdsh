@@ -212,6 +212,14 @@ class CheckError(ServiceError):
     pass
 
 
+class CheckActionError(CheckError):
+    """A forced action failed after availability was refreshed successfully."""
+
+    def __init__(self, message, result):
+        super().__init__(message)
+        self.result = result
+
+
 class WhyError(ServiceError):
     pass
 
@@ -308,26 +316,27 @@ def check_download(device, link_id, *, force=False, clock=None, sleep=None):
     link = _wait_for_online_check(device, link_id, initial_status, clock=clock, sleep=sleep)
     status = available_status(link)
     status_id = (status or {}).get("id")
+    result_payload = {
+        "uuid": link.get("uuid"),
+        "name": link.get("name"),
+        "availableStatus": status,
+    }
     if (force and link.get("finished") is False and link.get("running") is False
             and status_id in ("TRUE", "TRUETEMP")):
         try:
             resumed = device.action("/downloadsV2/resumeLinks", [[link_id], []])
         except Exception as e:
-            raise CheckError(f"Failed to resume download: {e}") from e
+            raise CheckActionError(f"Failed to resume download: {e}", result_payload) from e
         if resumed is False:
-            raise ServiceError("JDownloader did not accept the resume request")
+            raise CheckActionError("JDownloader did not accept the resume request", result_payload)
         try:
             result = device.downloads.force_download([link_id], [])
         except Exception as e:
-            raise CheckError(f"Failed to force download: {e}") from e
+            raise CheckActionError(f"Failed to force download: {e}", result_payload) from e
         if result is False:
-            raise ServiceError("JDownloader did not accept the force-download request")
+            raise CheckActionError("JDownloader did not accept the force-download request", result_payload)
 
-    return {
-        "uuid": link.get("uuid"),
-        "name": link.get("name"),
-        "availableStatus": available_status(link),
-    }
+    return result_payload
 
 
 def check_all_downloads(device):
