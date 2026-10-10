@@ -21,7 +21,8 @@ pip install jdsh
 1.  Enable JDownloader's Local API:
     *   Edit `<JD_FOLDER>/cfg/org.jdownloader.api.RemoteAPIConfig.json`.
     *   Set `"deprecatedapienabled": true`
-    *   _(Optional)_ you may also need to set `deprecatedapilocalhostonly` to `false` if you want to access it from remote. 
+    *   _(Optional)_ you may also need to set `deprecatedapilocalhostonly` to `false` if you want to access it from remote.
+    *   **Security:** JDownloader states that the deprecated API has no authentication or encryption by default. Keep it restricted to localhost unless remote access is necessary. If you enable remote access, restrict the port to trusted hosts through a VPN, SSH tunnel, and/or firewall; do not expose it to untrusted networks. See [JDownloader team guidance](https://board.jdownloader.org/showthread.php?p=547625).
     *   Restart JDownloader.
 
 ## Usage

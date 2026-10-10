@@ -1,0 +1,547 @@
+[
+  {
+    "coverage_id": "repository%20source%20and%20CLI%2FAPI%20boundary::local%20OS%20user%20to%20configured%20JDownloader%20API::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Access%20control",
+    "canonical_refs": {
+      "surface": "repository source and CLI/API boundary",
+      "boundary": "local OS user to configured JDownloader API",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Access control"
+    },
+    "surface": "repository source and CLI/API boundary",
+    "boundary": "local OS user to configured JDownloader API",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "Access control",
+    "starting_paths": [
+      "README.md",
+      "src/jdsh/config.py",
+      "src/jdsh/client.py",
+      "src/jdsh/cli.py"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "recon_authority",
+    "reviewed_paths": [
+      "README.md",
+      "src/jdsh/cli.py",
+      "src/jdsh/client.py",
+      "src/jdsh/config.py"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "recon_authority",
+        "reviewed_paths": [
+          "README.md",
+          "src/jdsh/config.py",
+          "src/jdsh/client.py",
+          "src/jdsh/cli.py"
+        ],
+        "invariant": "Only authorized local principals should control the configured JDownloader instance.",
+        "method": "source",
+        "result": "JDSH has no app-layer authorization; JDownloader documents that its deprecated API lacks authentication/encryption by default. Actual network exposure is deployment-specific.",
+        "artifact": null
+      },
+      {
+        "agent_id": "verify_local_api_candidate",
+        "reviewed_paths": [
+          "README.md",
+          "src/jdsh/config.py",
+          "src/jdsh/client.py",
+          "src/jdsh/cli.py"
+        ],
+        "invariant": "Only authorized local principals should control the configured JDownloader instance.",
+        "method": "source",
+        "result": "JDSH has no app-layer authorization; JDownloader documents that its deprecated API lacks authentication/encryption by default. Actual network exposure is deployment-specific.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "jdsh:local-api:remote-exposure"
+    ],
+    "unresolved": [
+      "The deprecated API lacks authentication/encryption by default, but whether the deployed listener is reachable by a lower-trust principal through bind, firewall, VPN, or routing configuration is not visible in this repository."
+    ]
+  },
+  {
+    "coverage_id": "repository%20source%20and%20CLI%2FAPI%20boundary::local%20OS%20user%20to%20configured%20JDownloader%20API::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Business%20logic",
+    "canonical_refs": {
+      "surface": "repository source and CLI/API boundary",
+      "boundary": "local OS user to configured JDownloader API",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Business logic"
+    },
+    "surface": "repository source and CLI/API boundary",
+    "boundary": "local OS user to configured JDownloader API",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "Business logic",
+    "starting_paths": [
+      "src/jdsh/cli.py",
+      "src/jdsh/clipboard.py",
+      "src/jdsh/diagnostics.py",
+      "src/jdsh/tui.py",
+      "src/jdsh/utils.py",
+      "pyproject.toml",
+      ".github/workflows/release.yaml"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Business logic",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "recon_entrypoints",
+    "reviewed_paths": [
+      "src/jdsh/cli.py",
+      "src/jdsh/clipboard.py",
+      "src/jdsh/diagnostics.py",
+      "src/jdsh/tui.py",
+      "src/jdsh/utils.py",
+      "pyproject.toml",
+      ".github/workflows/release.yaml"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "recon_entrypoints",
+        "reviewed_paths": [
+          "src/jdsh/cli.py",
+          "src/jdsh/clipboard.py",
+          "src/jdsh/diagnostics.py",
+          "src/jdsh/tui.py",
+          "src/jdsh/utils.py",
+          "pyproject.toml",
+          ".github/workflows/release.yaml"
+        ],
+        "invariant": "Queue operations should remain within the invoking user’s intended authority.",
+        "method": "source",
+        "result": "State-changing operations are explicit local commands; source shows no cross-user or tenant authority model.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "repository%20source%20and%20CLI%2FAPI%20boundary::local%20OS%20user%20to%20configured%20JDownloader%20API::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Chained%20vulnerabilities%20and%20trust%20boundaries",
+    "canonical_refs": {
+      "surface": "repository source and CLI/API boundary",
+      "boundary": "local OS user to configured JDownloader API",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries"
+    },
+    "surface": "repository source and CLI/API boundary",
+    "boundary": "local OS user to configured JDownloader API",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "Chained vulnerabilities and trust boundaries",
+    "starting_paths": [
+      "src/jdsh/cli.py",
+      "src/jdsh/clipboard.py",
+      "src/jdsh/diagnostics.py",
+      "src/jdsh/tui.py",
+      "src/jdsh/utils.py",
+      "pyproject.toml",
+      ".github/workflows/release.yaml"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "recon_entrypoints",
+    "reviewed_paths": [
+      "src/jdsh/cli.py",
+      "src/jdsh/clipboard.py",
+      "src/jdsh/diagnostics.py",
+      "src/jdsh/tui.py",
+      "src/jdsh/utils.py",
+      "pyproject.toml",
+      ".github/workflows/release.yaml"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "recon_entrypoints",
+        "reviewed_paths": [
+          "src/jdsh/cli.py",
+          "src/jdsh/clipboard.py",
+          "src/jdsh/diagnostics.py",
+          "src/jdsh/tui.py",
+          "src/jdsh/utils.py",
+          "pyproject.toml",
+          ".github/workflows/release.yaml"
+        ],
+        "invariant": "Data crossing from CLI/clipboard into JDownloader should not gain unintended authority.",
+        "method": "source",
+        "result": "URLs are sent to LinkGrabber without autostart except the explicit replace command; no downstream boundary crossing was established.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "repository%20source%20and%20CLI%2FAPI%20boundary::local%20OS%20user%20to%20configured%20JDownloader%20API::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Cryptography%20and%20secrets",
+    "canonical_refs": {
+      "surface": "repository source and CLI/API boundary",
+      "boundary": "local OS user to configured JDownloader API",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Cryptography and secrets"
+    },
+    "surface": "repository source and CLI/API boundary",
+    "boundary": "local OS user to configured JDownloader API",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "Cryptography and secrets",
+    "starting_paths": [
+      "src/jdsh/cli.py",
+      "src/jdsh/clipboard.py",
+      "src/jdsh/diagnostics.py",
+      "src/jdsh/tui.py",
+      "src/jdsh/utils.py",
+      "pyproject.toml",
+      ".github/workflows/release.yaml"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Cryptography and secrets",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "recon_entrypoints",
+    "reviewed_paths": [
+      "src/jdsh/cli.py",
+      "src/jdsh/clipboard.py",
+      "src/jdsh/diagnostics.py",
+      "src/jdsh/tui.py",
+      "src/jdsh/utils.py",
+      "pyproject.toml",
+      ".github/workflows/release.yaml"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "recon_entrypoints",
+        "reviewed_paths": [
+          "src/jdsh/cli.py",
+          "src/jdsh/clipboard.py",
+          "src/jdsh/diagnostics.py",
+          "src/jdsh/tui.py",
+          "src/jdsh/utils.py",
+          "pyproject.toml",
+          ".github/workflows/release.yaml"
+        ],
+        "invariant": "Credentials and secrets should not be exposed through diagnostics or committed source.",
+        "method": "source",
+        "result": "Download-link password is omitted from detail queries; no application credentials were found in committed source.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "repository%20source%20and%20CLI%2FAPI%20boundary::local%20OS%20user%20to%20configured%20JDownloader%20API::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Feature%20abuse%20and%20data%20leakage",
+    "canonical_refs": {
+      "surface": "repository source and CLI/API boundary",
+      "boundary": "local OS user to configured JDownloader API",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Feature abuse and data leakage"
+    },
+    "surface": "repository source and CLI/API boundary",
+    "boundary": "local OS user to configured JDownloader API",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "Feature abuse and data leakage",
+    "starting_paths": [
+      "src/jdsh/cli.py",
+      "src/jdsh/clipboard.py",
+      "src/jdsh/diagnostics.py",
+      "src/jdsh/tui.py",
+      "src/jdsh/utils.py",
+      "pyproject.toml",
+      ".github/workflows/release.yaml"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "blocked",
+    "agent_id": "recon_entrypoints",
+    "reviewed_paths": [
+      "src/jdsh/cli.py",
+      "src/jdsh/clipboard.py",
+      "src/jdsh/diagnostics.py",
+      "src/jdsh/tui.py",
+      "src/jdsh/utils.py",
+      "pyproject.toml",
+      ".github/workflows/release.yaml"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "recon_entrypoints",
+        "reviewed_paths": [
+          "src/jdsh/cli.py",
+          "src/jdsh/clipboard.py",
+          "src/jdsh/diagnostics.py",
+          "src/jdsh/tui.py",
+          "src/jdsh/utils.py",
+          "pyproject.toml",
+          ".github/workflows/release.yaml"
+        ],
+        "invariant": "Link and diagnostic features should not cross the local user’s data boundary.",
+        "method": "source",
+        "result": "Explicit diagnostic commands expose the configured user’s own URLs and package metadata; no cross-principal path was established.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [
+      "JDownloader’s parsing of comma-containing or unusual URI inputs passed through the links field was not established; no authority impact is demonstrated, and validation requires a dummy LinkGrabber fixture."
+    ]
+  },
+  {
+    "coverage_id": "repository%20source%20and%20CLI%2FAPI%20boundary::local%20OS%20user%20to%20configured%20JDownloader%20API::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Injection",
+    "canonical_refs": {
+      "surface": "repository source and CLI/API boundary",
+      "boundary": "local OS user to configured JDownloader API",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Injection"
+    },
+    "surface": "repository source and CLI/API boundary",
+    "boundary": "local OS user to configured JDownloader API",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "Injection",
+    "starting_paths": [
+      "src/jdsh/cli.py",
+      "src/jdsh/clipboard.py",
+      "src/jdsh/diagnostics.py",
+      "src/jdsh/tui.py",
+      "src/jdsh/utils.py",
+      "pyproject.toml",
+      ".github/workflows/release.yaml"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Injection",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "blocked",
+    "agent_id": "recon_entrypoints",
+    "reviewed_paths": [
+      "src/jdsh/cli.py",
+      "src/jdsh/clipboard.py",
+      "src/jdsh/diagnostics.py",
+      "src/jdsh/tui.py",
+      "src/jdsh/utils.py",
+      "pyproject.toml",
+      ".github/workflows/release.yaml"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "recon_entrypoints",
+        "reviewed_paths": [
+          "src/jdsh/cli.py",
+          "src/jdsh/clipboard.py",
+          "src/jdsh/diagnostics.py",
+          "src/jdsh/tui.py",
+          "src/jdsh/utils.py",
+          "pyproject.toml",
+          ".github/workflows/release.yaml"
+        ],
+        "invariant": "API-returned strings should be rendered as inert terminal text.",
+        "method": "source",
+        "result": "Source inspection found API strings passed to Rich tables and panels; terminal behavior was not exercised.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [
+      "Whether API-controlled labels/status strings can produce misleading or active Rich terminal output under the installed dependency version was not established; requires a bounded dummy-response rendering check."
+    ]
+  },
+  {
+    "coverage_id": "repository%20source%20and%20CLI%2FAPI%20boundary::local%20OS%20user%20to%20configured%20JDownloader%20API::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Obvious%20things",
+    "canonical_refs": {
+      "surface": "repository source and CLI/API boundary",
+      "boundary": "local OS user to configured JDownloader API",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Obvious things"
+    },
+    "surface": "repository source and CLI/API boundary",
+    "boundary": "local OS user to configured JDownloader API",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "Obvious things",
+    "starting_paths": [
+      "src/jdsh/cli.py",
+      "src/jdsh/clipboard.py",
+      "src/jdsh/diagnostics.py",
+      "src/jdsh/tui.py",
+      "src/jdsh/utils.py",
+      "pyproject.toml",
+      ".github/workflows/release.yaml"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Obvious things",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "recon_build_ci",
+    "reviewed_paths": [
+      "src/jdsh/cli.py",
+      "src/jdsh/clipboard.py",
+      "src/jdsh/diagnostics.py",
+      "src/jdsh/tui.py",
+      "src/jdsh/utils.py",
+      "pyproject.toml",
+      ".github/workflows/release.yaml"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "recon_build_ci",
+        "reviewed_paths": [
+          "src/jdsh/cli.py",
+          "src/jdsh/clipboard.py",
+          "src/jdsh/diagnostics.py",
+          "src/jdsh/tui.py",
+          "src/jdsh/utils.py",
+          "pyproject.toml",
+          ".github/workflows/release.yaml"
+        ],
+        "invariant": "No hardcoded credentials or executable-input path should be present.",
+        "method": "source",
+        "result": "No credential literals, eval/exec, or shell=True path was found; the clipboard helper uses fixed executable arguments.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "repository%20source%20and%20CLI%2FAPI%20boundary::local%20OS%20user%20to%20configured%20JDownloader%20API::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Resource%20and%20file%20handling",
+    "canonical_refs": {
+      "surface": "repository source and CLI/API boundary",
+      "boundary": "local OS user to configured JDownloader API",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Resource and file handling"
+    },
+    "surface": "repository source and CLI/API boundary",
+    "boundary": "local OS user to configured JDownloader API",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "Resource and file handling",
+    "starting_paths": [
+      "src/jdsh/cli.py",
+      "src/jdsh/clipboard.py",
+      "src/jdsh/diagnostics.py",
+      "src/jdsh/tui.py",
+      "src/jdsh/utils.py",
+      "pyproject.toml",
+      ".github/workflows/release.yaml"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Resource and file handling",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "blocked",
+    "agent_id": "recon_entrypoints",
+    "reviewed_paths": [
+      "src/jdsh/cli.py",
+      "src/jdsh/clipboard.py",
+      "src/jdsh/diagnostics.py",
+      "src/jdsh/tui.py",
+      "src/jdsh/utils.py",
+      "pyproject.toml",
+      ".github/workflows/release.yaml"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "recon_entrypoints",
+        "reviewed_paths": [
+          "src/jdsh/cli.py",
+          "src/jdsh/clipboard.py",
+          "src/jdsh/diagnostics.py",
+          "src/jdsh/tui.py",
+          "src/jdsh/utils.py",
+          "pyproject.toml",
+          ".github/workflows/release.yaml"
+        ],
+        "invariant": "Untrusted inputs should not trigger shell execution or unbounded local file effects.",
+        "method": "source",
+        "result": "Clipboard commands use fixed argv and a timeout; no input-controlled local file writes or shell calls were found. API response size behavior remains unmeasured.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [
+      "The maximum response size and rendering/memory cost for unusually large JDownloader API responses were not measured; requires a bounded dummy-response check."
+    ]
+  },
+  {
+    "coverage_id": "repository%20source%20and%20CLI%2FAPI%20boundary::local%20OS%20user%20to%20configured%20JDownloader%20API::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Wildcard",
+    "canonical_refs": {
+      "surface": "repository source and CLI/API boundary",
+      "boundary": "local OS user to configured JDownloader API",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Wildcard"
+    },
+    "surface": "repository source and CLI/API boundary",
+    "boundary": "local OS user to configured JDownloader API",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "Wildcard",
+    "starting_paths": [
+      "src/jdsh/cli.py",
+      "src/jdsh/clipboard.py",
+      "src/jdsh/diagnostics.py",
+      "src/jdsh/tui.py",
+      "src/jdsh/utils.py",
+      "pyproject.toml",
+      ".github/workflows/release.yaml"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Wildcard",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "recon_entrypoints",
+    "reviewed_paths": [
+      "src/jdsh/cli.py",
+      "src/jdsh/clipboard.py",
+      "src/jdsh/diagnostics.py",
+      "src/jdsh/tui.py",
+      "src/jdsh/utils.py",
+      "pyproject.toml",
+      ".github/workflows/release.yaml"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "recon_entrypoints",
+        "reviewed_paths": [
+          "src/jdsh/cli.py",
+          "src/jdsh/clipboard.py",
+          "src/jdsh/diagnostics.py",
+          "src/jdsh/tui.py",
+          "src/jdsh/utils.py",
+          "pyproject.toml",
+          ".github/workflows/release.yaml"
+        ],
+        "invariant": "Compatibility and fallback paths should preserve the same local-user boundary.",
+        "method": "source",
+        "result": "Source review found no separate service, plugin, or fallback path that bypasses the configured JDownloader endpoint.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": []
+  }
+]
