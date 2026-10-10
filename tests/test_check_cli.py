@@ -25,6 +25,7 @@ class CheckCommandTests(unittest.TestCase):
         return {
             "uuid": 123,
             "name": "file.zip",
+            "finished": False,
             "advancedStatus": {"AvailableStatus": status},
         }
 
@@ -59,6 +60,7 @@ class CheckCommandTests(unittest.TestCase):
         device.action.assert_called_once_with(
             "/downloadsV2/startOnlineStatusCheck", [[123], []]
         )
+        device.downloads.force_download.assert_called_once_with([123], [])
         rendered = output.getvalue()
         self.assertIn("file.zip", rendered)
         self.assertIn("FALSE (Offline)", rendered)
@@ -80,6 +82,18 @@ class CheckCommandTests(unittest.TestCase):
 
         payload = json.loads(stdout.getvalue())
         self.assertEqual(payload["availableStatus"]["id"], "TRUE")
+        device.downloads.force_download.assert_called_once_with([123], [])
+
+    def test_completed_link_is_not_force_downloaded(self):
+        device = MagicMock()
+        device.downloads.query_links.return_value = [dict(self.link("TRUE"), finished=True)]
+
+        with patch.object(services.time, "monotonic", side_effect=[0.0, 1.1]), \
+             patch.object(services.time, "sleep"), \
+             patch("sys.stdout", new_callable=io.StringIO):
+            cli._execute(cli.cmd_check, device, SimpleNamespace(id=123, as_json=True))
+
+        device.downloads.force_download.assert_not_called()
 
     def test_missing_link_is_reported_cleanly_without_starting_check(self):
         device = MagicMock()

@@ -306,6 +306,14 @@ def check_download(device, link_id, *, clock=None, sleep=None):
         raise CheckError(f"Failed to start online status check: {e}") from e
 
     link = _wait_for_online_check(device, link_id, initial_status, clock=clock, sleep=sleep)
+    if not link.get("finished", False):
+        try:
+            result = device.downloads.force_download([link_id], [])
+            if result is False:
+                raise ServiceError("JDownloader did not accept the force-download request")
+        except Exception as e:
+            raise CheckError(f"Failed to force download: {e}") from e
+
     return {
         "uuid": link.get("uuid"),
         "name": link.get("name"),

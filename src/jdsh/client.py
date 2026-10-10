@@ -46,6 +46,7 @@ DOWNLOAD_LINK_STATE_QUERY = {
 CHECK_LINK_STATE_QUERY = {
     "name": True,
     "uuid": True,
+    "finished": True,
     "advancedStatus": True,
 }
 

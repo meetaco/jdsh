@@ -171,7 +171,7 @@ Windows input is covered by simulated tests, not a live Windows terminal run.
 │    list (ls)                [-d]                     List active downloads                                                                                           │
 │    show                     <id> [--json]            Show raw link, package, and URL details                                                                         │
 │    why                      <id> [--json]            Explain why a download is not progressing                                                                       │
-│    check                    <id> | --all [--json]    Force-refresh link availability                                                                                 │
+│    check                    <id> | --all [--json]    Refresh availability; retry unfinished link by ID                                                               │
 │    grabber                  [-d] [--json] [filters]               Inspect pending links; see jd grabber --help                                                       │
 │    add                      [<url>...] [--clipboard] [-f <path>] Add links to LinkGrabber                                                                            │
 │    confirm                  [IDs] [--package ID] | --all          Move selected entries; no IDs means all                                                            │

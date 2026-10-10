@@ -65,7 +65,7 @@ def _build_parser_with_commands():
     p_why.add_argument("id", type=int, help="Download link ID shown by jd ls")
     p_why.add_argument("--json", action="store_true", dest="as_json", help="Print diagnosis and source evidence as JSON")
 
-    p_check = command("check", 'Request a fresh availability check for one link or the whole queue.')
+    p_check = command("check", 'Refresh availability; retry an unfinished link when an ID is given.')
     p_check.add_argument("id", nargs="?", type=int, help="Download link ID shown by jd ls")
     p_check.add_argument(
         "--all",
