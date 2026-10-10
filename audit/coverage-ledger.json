@@ -40,9 +40,9 @@
           "src/jdsh/client.py",
           "src/jdsh/cli.py"
         ],
-        "invariant": "Only the invoking local user and the configured JDownloader API should exercise the documented queue operations.",
+        "invariant": "Only authorized local principals should control the configured JDownloader instance.",
         "method": "source",
-        "result": "Source supports a conditional boundary hypothesis; deployed API auth and network reachability remain unknown.",
+        "result": "JDSH has no app-layer authorization; JDownloader documents that its deprecated API lacks authentication/encryption by default. Actual network exposure is deployment-specific.",
         "artifact": null
       },
       {
@@ -53,9 +53,9 @@
           "src/jdsh/client.py",
           "src/jdsh/cli.py"
         ],
-        "invariant": "Remote API operations must not cross an unauthenticated network boundary.",
+        "invariant": "Only authorized local principals should control the configured JDownloader instance.",
         "method": "source",
-        "result": "Independent review confirms source cannot establish API authentication or external reachability; retain as needs_validation.",
+        "result": "JDSH has no app-layer authorization; JDownloader documents that its deprecated API lacks authentication/encryption by default. Actual network exposure is deployment-specific.",
         "artifact": null
       }
     ],
@@ -63,7 +63,7 @@
       "jdsh:local-api:remote-exposure"
     ],
     "unresolved": [
-      "Authentication requirements and externally reachable bind/firewall state of the deployed JDownloader Local API are not visible in source."
+      "The deprecated API lacks authentication/encryption by default, but whether the deployed listener is reachable by a lower-trust principal through bind, firewall, VPN, or routing configuration is not visible in this repository."
     ]
   },
   {
@@ -116,9 +116,9 @@
           "pyproject.toml",
           ".github/workflows/release.yaml"
         ],
-        "invariant": "Only the invoking local user and the configured JDownloader API should exercise the documented queue operations.",
+        "invariant": "Queue operations should remain within the invoking user’s intended authority.",
         "method": "source",
-        "result": "Reviewed committed source; no confirmed boundary violation established in this source-only pass.",
+        "result": "State-changing operations are explicit local commands; source shows no cross-user or tenant authority model.",
         "artifact": null
       }
     ],
@@ -175,9 +175,9 @@
           "pyproject.toml",
           ".github/workflows/release.yaml"
         ],
-        "invariant": "Only the invoking local user and the configured JDownloader API should exercise the documented queue operations.",
+        "invariant": "Data crossing from CLI/clipboard into JDownloader should not gain unintended authority.",
         "method": "source",
-        "result": "Reviewed committed source; no confirmed boundary violation established in this source-only pass.",
+        "result": "URLs are sent to LinkGrabber without autostart except the explicit replace command; no downstream boundary crossing was established.",
         "artifact": null
       }
     ],
@@ -234,9 +234,9 @@
           "pyproject.toml",
           ".github/workflows/release.yaml"
         ],
-        "invariant": "Only the invoking local user and the configured JDownloader API should exercise the documented queue operations.",
+        "invariant": "Credentials and secrets should not be exposed through diagnostics or committed source.",
         "method": "source",
-        "result": "Reviewed committed source; no confirmed boundary violation established in this source-only pass.",
+        "result": "Download-link password is omitted from detail queries; no application credentials were found in committed source.",
         "artifact": null
       }
     ],
@@ -270,7 +270,7 @@
     "prior_status": "none",
     "attempts": [],
     "wave": 1,
-    "status": "covered",
+    "status": "blocked",
     "agent_id": "recon_entrypoints",
     "reviewed_paths": [
       "src/jdsh/cli.py",
@@ -293,14 +293,16 @@
           "pyproject.toml",
           ".github/workflows/release.yaml"
         ],
-        "invariant": "Only the invoking local user and the configured JDownloader API should exercise the documented queue operations.",
+        "invariant": "Link and diagnostic features should not cross the local user’s data boundary.",
         "method": "source",
-        "result": "Reviewed committed source; no confirmed boundary violation established in this source-only pass.",
+        "result": "Explicit diagnostic commands expose the configured user’s own URLs and package metadata; no cross-principal path was established.",
         "artifact": null
       }
     ],
     "result_fingerprints": [],
-    "unresolved": []
+    "unresolved": [
+      "JDownloader’s parsing of comma-containing or unusual URI inputs passed through the links field was not established; no authority impact is demonstrated, and validation requires a dummy LinkGrabber fixture."
+    ]
   },
   {
     "coverage_id": "repository%20source%20and%20CLI%2FAPI%20boundary::local%20OS%20user%20to%20configured%20JDownloader%20API::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Injection",
@@ -329,7 +331,7 @@
     "prior_status": "none",
     "attempts": [],
     "wave": 1,
-    "status": "covered",
+    "status": "blocked",
     "agent_id": "recon_entrypoints",
     "reviewed_paths": [
       "src/jdsh/cli.py",
@@ -352,14 +354,16 @@
           "pyproject.toml",
           ".github/workflows/release.yaml"
         ],
-        "invariant": "Only the invoking local user and the configured JDownloader API should exercise the documented queue operations.",
+        "invariant": "API-returned strings should be rendered as inert terminal text.",
         "method": "source",
-        "result": "Reviewed committed source; no confirmed boundary violation established in this source-only pass.",
+        "result": "Source inspection found API strings passed to Rich tables and panels; terminal behavior was not exercised.",
         "artifact": null
       }
     ],
     "result_fingerprints": [],
-    "unresolved": []
+    "unresolved": [
+      "Whether API-controlled labels/status strings can produce misleading or active Rich terminal output under the installed dependency version was not established; requires a bounded dummy-response rendering check."
+    ]
   },
   {
     "coverage_id": "repository%20source%20and%20CLI%2FAPI%20boundary::local%20OS%20user%20to%20configured%20JDownloader%20API::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Obvious%20things",
@@ -411,9 +415,9 @@
           "pyproject.toml",
           ".github/workflows/release.yaml"
         ],
-        "invariant": "Only the invoking local user and the configured JDownloader API should exercise the documented queue operations.",
+        "invariant": "No hardcoded credentials or executable-input path should be present.",
         "method": "source",
-        "result": "Reviewed committed source; no confirmed boundary violation established in this source-only pass.",
+        "result": "No credential literals, eval/exec, or shell=True path was found; the clipboard helper uses fixed executable arguments.",
         "artifact": null
       }
     ],
@@ -447,7 +451,7 @@
     "prior_status": "none",
     "attempts": [],
     "wave": 1,
-    "status": "covered",
+    "status": "blocked",
     "agent_id": "recon_entrypoints",
     "reviewed_paths": [
       "src/jdsh/cli.py",
@@ -470,14 +474,16 @@
           "pyproject.toml",
           ".github/workflows/release.yaml"
         ],
-        "invariant": "Only the invoking local user and the configured JDownloader API should exercise the documented queue operations.",
+        "invariant": "Untrusted inputs should not trigger shell execution or unbounded local file effects.",
         "method": "source",
-        "result": "Reviewed committed source; no confirmed boundary violation established in this source-only pass.",
+        "result": "Clipboard commands use fixed argv and a timeout; no input-controlled local file writes or shell calls were found. API response size behavior remains unmeasured.",
         "artifact": null
       }
     ],
     "result_fingerprints": [],
-    "unresolved": []
+    "unresolved": [
+      "The maximum response size and rendering/memory cost for unusually large JDownloader API responses were not measured; requires a bounded dummy-response check."
+    ]
   },
   {
     "coverage_id": "repository%20source%20and%20CLI%2FAPI%20boundary::local%20OS%20user%20to%20configured%20JDownloader%20API::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Wildcard",
@@ -529,9 +535,9 @@
           "pyproject.toml",
           ".github/workflows/release.yaml"
         ],
-        "invariant": "Only the invoking local user and the configured JDownloader API should exercise the documented queue operations.",
+        "invariant": "Compatibility and fallback paths should preserve the same local-user boundary.",
         "method": "source",
-        "result": "Reviewed committed source; no confirmed boundary violation established in this source-only pass.",
+        "result": "Source review found no separate service, plugin, or fallback path that bypasses the configured JDownloader endpoint.",
         "artifact": null
       }
     ],

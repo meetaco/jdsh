@@ -1,8 +1,7 @@
 {
   "repository": "meetaco/jdsh",
-  "target": "/home/meetaco/dev/jdsh",
+  "target": ".",
   "source_ref": "25478ab971a8aa7ac25d79586d59c0fa95a573d9",
-  "source_branch": "feature/finished-date-column",
   "worktree_dirty": true,
   "excluded_uncommitted_paths": [
     "README.md",
@@ -14,7 +13,7 @@
   "run_status": "incomplete",
   "incomplete_reason": "sandbox_controls_unavailable",
   "execution_constraints": "No target builds, tests, or processes were run because the required OS-enforced no-network, allowlisted-environment, read-only-target, scratch-only-write, and resource-limit sandbox was unavailable.",
-  "prior_run_inputs": "No prior run artifacts found under ~/security-audit-skill/jdsh/.",
+  "prior_run_inputs": "No compatible prior audit artifacts were available for this repository.",
   "agents": [
     "recon_entrypoints",
     "recon_authority",
@@ -24,5 +23,10 @@
   ],
   "confirmed_count": 0,
   "needs_validation_count": 1,
-  "rejected_count": 0
+  "rejected_count": 0,
+  "base_ref_check": {
+    "base_ref": "main",
+    "base_commit": "65a2e42c61c88f03566e1a11becc0146a4b0a46b",
+    "reviewed_commit_is_ancestor": true
+  }
 }
